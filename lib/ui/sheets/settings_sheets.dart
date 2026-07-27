@@ -120,6 +120,53 @@ class SettingsSheet {
                 },
               ),
               SwitchListTile(
+                secondary: Icon(
+                  emu.soundEnabled ? Icons.volume_up : Icons.volume_off,
+                  color: const Color(0xFFE8DCC8),
+                ),
+                title: const Text('Sound', style: TextStyle(color: Colors.white)),
+                subtitle: Text(
+                  '${(emu.soundVolume * 100).round()}%',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                ),
+                value: emu.soundEnabled,
+                onChanged: (v) {
+                  emu.setSoundEnabled(v);
+                  (ctx as Element).markNeedsBuild();
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        emu.volumeDown();
+                        (ctx as Element).markNeedsBuild();
+                      },
+                      icon: const Icon(Icons.volume_down, color: Color(0xFFE8DCC8)),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: emu.soundVolume,
+                        onChanged: (v) {
+                          emu.setSoundVolume(v);
+                          (ctx as Element).markNeedsBuild();
+                        },
+                        activeColor: const Color(0xFFE8C84A),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        emu.volumeUp();
+                        (ctx as Element).markNeedsBuild();
+                      },
+                      icon: const Icon(Icons.volume_up, color: Color(0xFFE8DCC8)),
+                    ),
+                  ],
+                ),
+              ),
+              SwitchListTile(
                 secondary: const Icon(Icons.fullscreen, color: Color(0xFFE8DCC8)),
                 title: const Text('Fullscreen', style: TextStyle(color: Colors.white)),
                 subtitle: Text(

@@ -16,6 +16,7 @@ dependencies:
   shared_preferences: ^2.5.5
   file_picker: ^11.0.2
   window_manager: ^0.5.2
+  mp_audio_stream: ^0.2.2
 
 dev_dependencies:
   flutter_test:

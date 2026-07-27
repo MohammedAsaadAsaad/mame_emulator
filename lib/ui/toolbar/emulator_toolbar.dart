@@ -69,6 +69,23 @@ class EmulatorToolbar extends StatelessWidget {
               label: '${controller.emulationSpeed.toStringAsFixed(2)}×',
               onTap: onSpeed,
             ),
+            _Tool(
+              icon: controller.soundEnabled
+                  ? Icons.volume_up
+                  : Icons.volume_off,
+              label: controller.soundEnabled ? 'Sound' : 'Muted',
+              onTap: controller.toggleSound,
+            ),
+            _Tool(
+              icon: Icons.volume_down,
+              label: 'Vol−',
+              onTap: controller.volumeDown,
+            ),
+            _Tool(
+              icon: Icons.volume_up,
+              label: 'Vol+',
+              onTap: controller.volumeUp,
+            ),
             _Tool(icon: Icons.save, label: 'Slots', onTap: onSlots),
             _Tool(icon: Icons.keyboard, label: 'Keys', onTap: onKeys),
             _Tool(

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../audio/arcade_audio.dart';
 import 'libretro_bindings.dart';
 
 /// Hosts a libretro arcade core (FBNeo / MAME2003+) and exposes frames + input.
@@ -44,10 +45,14 @@ class LibretroHost extends ChangeNotifier {
   int frameWidth = 0;
   int frameHeight = 0;
   double fps = 60;
+  double sampleRate = 44100;
   int videoCallbacks = 0;
   bool _frameDirty = false;
   Uint8List? _rgba;
   bool _buildingImage = false;
+
+  /// Optional sink for stereo PCM (owned by [EmulatorController]).
+  ArcadeAudio? audio;
 
   bool get isGameLoaded => _gameLoaded;
   bool get isRunning => _running;
@@ -173,9 +178,12 @@ class LibretroHost extends ChangeNotifier {
     final av = calloc<RetroSystemAvInfo>();
     b.retro_get_system_av_info(av);
     fps = av.ref.timing.fps == 0 ? 60 : av.ref.timing.fps;
+    sampleRate = av.ref.timing.sample_rate == 0 ? 44100 : av.ref.timing.sample_rate;
     frameWidth = av.ref.geometry.base_width;
     frameHeight = av.ref.geometry.base_height;
     calloc.free(av);
+
+    unawaited(audio?.ensureRate(sampleRate.round()));
 
     romPath = path;
     _gameLoaded = true;
@@ -187,6 +195,7 @@ class LibretroHost extends ChangeNotifier {
   void start({double speed = 1.0}) {
     if (!_gameLoaded) return;
     _running = true;
+    audio?.resume();
     final factor = speed <= 0 ? 1.0 : speed;
     final periodMs = (1000 / (fps * factor)).round().clamp(4, 50);
     _ticker?.cancel();
@@ -219,6 +228,8 @@ class LibretroHost extends ChangeNotifier {
     _running = false;
     _ticker?.cancel();
     _ticker = null;
+    audio?.pause();
+    notifyListeners();
   }
 
   void setButton(int id, bool down) {
@@ -454,9 +465,16 @@ class LibretroHost extends ChangeNotifier {
     _frameDirty = true;
   }
 
-  void _audioSample(int left, int right) {}
+  void _audioSample(int left, int right) {
+    audio?.pushSample(left, right);
+  }
 
-  int _audioBatch(Pointer<Int16> data, int frames) => frames;
+  int _audioBatch(Pointer<Int16> data, int frames) {
+    if (frames <= 0) return 0;
+    final samples = data.asTypedList(frames * 2);
+    audio?.pushBatch(samples);
+    return frames;
+  }
 
   void _inputPoll() {}
 

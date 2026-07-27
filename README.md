@@ -12,6 +12,7 @@ Flutter arcade cabinet with **libretro** cores (FBNeo / MAME2003+).
 - 10 save slots (MEMORY PACK)
 - Pause / Reset / Speed (0.5×–1.5×)
 - CRT / xBRZ / HQx / integer shaders
+- Sound enable/mute + volume controls
 - Portrait + landscape control layouts
 - Skeuomorphic arcade pad (toggleable)
 

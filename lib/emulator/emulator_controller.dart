@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../audio/arcade_audio.dart';
 import '../controllers/input_mapper.dart';
 import '../controllers/key_binding_controller.dart';
 import '../libretro/libretro_bindings.dart';
@@ -25,11 +26,13 @@ enum PadButton { a, b, c, d }
 class EmulatorController extends ChangeNotifier {
   EmulatorController() {
     _host.addListener(_onHost);
+    _host.audio = audio;
   }
 
   final LibretroHost _host = LibretroHost();
   final KeyBindingController keyBindings = KeyBindingController();
   final RomLibraryService library = RomLibraryService();
+  final ArcadeAudio audio = ArcadeAudio();
 
   String toast = '';
   int saveSlot = 1;
@@ -45,6 +48,10 @@ class EmulatorController extends ChangeNotifier {
   /// Display shaders (NES-style CRT / upscale).
   bool shadersEnabled = true;
   ImageEnhancementMode enhancementMode = ImageEnhancementMode.crtArcade;
+
+  /// Sound on/off and master volume (0–1).
+  bool soundEnabled = true;
+  double soundVolume = 0.85;
 
   final Set<int> _keyDirs = {};
   double _stickX = 0;
@@ -71,6 +78,10 @@ class EmulatorController extends ChangeNotifier {
     await keyBindings.load();
     await _loadSpeed();
     await _loadShaderPrefs();
+    await _loadSoundPrefs();
+    await audio.initialize();
+    audio.setEnabled(soundEnabled);
+    audio.setVolume(soundVolume);
     unawaited(EnhanceShader.warmUp());
     games = await library.loadAll();
     _clampMenuIndex();
@@ -92,6 +103,37 @@ class EmulatorController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     emulationSpeed = prefs.getDouble('emulation_speed') ?? 1.0;
   }
+
+  Future<void> _loadSoundPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    soundEnabled = prefs.getBool('sound_enabled') ?? true;
+    soundVolume = (prefs.getDouble('sound_volume') ?? 0.85).clamp(0.0, 1.0);
+  }
+
+  Future<void> setSoundEnabled(bool enabled) async {
+    soundEnabled = enabled;
+    audio.setEnabled(enabled);
+    if (enabled && _host.isRunning) audio.resume();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sound_enabled', enabled);
+    _flash(enabled ? 'SOUND ON' : 'SOUND OFF');
+    notifyListeners();
+  }
+
+  void toggleSound() => setSoundEnabled(!soundEnabled);
+
+  Future<void> setSoundVolume(double volume) async {
+    soundVolume = volume.clamp(0.0, 1.0);
+    audio.setVolume(soundVolume);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('sound_volume', soundVolume);
+    _flash('VOL ${(soundVolume * 100).round()}%');
+    notifyListeners();
+  }
+
+  void volumeUp() => setSoundVolume(soundVolume + 0.1);
+
+  void volumeDown() => setSoundVolume(soundVolume - 0.1);
 
   Future<void> _loadShaderPrefs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -385,11 +427,13 @@ class EmulatorController extends ChangeNotifier {
   }
 
   void insertCoin() {
+    audio.resume(); // unlock audio on mobile after a user gesture
     _tap(RETRO_DEVICE_ID_JOYPAD_SELECT);
     _flash('COIN');
   }
 
   void pressStart() {
+    audio.resume();
     if (inGameMenu) {
       unawaited(confirmMenuSelection());
       return;
@@ -717,10 +761,12 @@ class EmulatorController extends ChangeNotifier {
   }
 
   @override
+  @override
   void dispose() {
     _toastTimer?.cancel();
     _host.removeListener(_onHost);
     _host.dispose();
+    unawaited(audio.dispose());
     super.dispose();
   }
 }
