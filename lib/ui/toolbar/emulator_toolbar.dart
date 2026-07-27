@@ -176,13 +176,11 @@ class _Tool extends StatelessWidget {
     required this.icon,
     required this.label,
     this.onTap,
-    this.onLongPress,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +189,6 @@ class _Tool extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       child: InkWell(
         onTap: onTap,
-        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(6),
         child: Container(
           constraints: const BoxConstraints(minWidth: 56),
