@@ -5,7 +5,9 @@ import 'dart:ui' as ui;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'libretro_bindings.dart';
 
@@ -52,18 +54,18 @@ class LibretroHost extends ChangeNotifier {
 
   Future<void> loadCore(String corePath) async {
     await unload();
-    if (!File(corePath).existsSync()) {
+    final resolved = CoreLocator.resolveLibraryPath(corePath);
+    if (resolved == null) {
       status = 'Core not found: $corePath';
       notifyListeners();
       throw StateError(status);
     }
 
-    status = 'Opening ${p.basename(corePath)}…';
+    status = 'Opening ${p.basename(resolved)}…';
     notifyListeners();
 
-    final abs = p.absolute(corePath);
     try {
-      _lib = DynamicLibrary.open(abs);
+      _lib = DynamicLibrary.open(resolved);
     } catch (e) {
       status = 'Failed to open core: $e';
       notifyListeners();
@@ -85,14 +87,20 @@ class LibretroHost extends ChangeNotifier {
     _systemDir = support.absolute.path.toNativeUtf8();
     _saveDir = saves.absolute.path.toNativeUtf8();
 
-    final helperPath = CoreLocator.helpersPath;
-    if (!File(helperPath).existsSync()) {
-      status = 'Missing helpers — run ./scripts/build_helpers.sh';
+    final helperPath = CoreLocator.resolveLibraryPath(CoreLocator.helpersName);
+    if (helperPath == null) {
+      status = 'Missing helpers — run ./scripts/build_helpers.sh (desktop) or rebuild APK';
       notifyListeners();
       throw StateError(status);
     }
-    _helpers = DynamicLibrary.open(helperPath);
-    _logFn = _helpers!.lookup('mame_cabinet_log').cast<Void>();
+    try {
+      _helpers = DynamicLibrary.open(helperPath);
+      _logFn = _helpers!.lookup('mame_cabinet_log').cast<Void>();
+    } catch (e) {
+      status = 'Failed to open helpers: $e';
+      notifyListeners();
+      rethrow;
+    }
 
     status = 'Initializing core…';
     notifyListeners();
@@ -482,11 +490,36 @@ class LibretroHost extends ChangeNotifier {
 
 /// Resolve project root + bundled core / helper paths.
 ///
-/// [Directory.current] is unreliable (IDE / bundle cwd), so we walk parents
-/// looking for `pubspec.yaml` + `native/cores`, and also check next to the
-/// executable.
+/// Desktop: walk for `pubspec.yaml` + `native/cores`.
+/// Android: load `.so` from the app `nativeLibraryDir` (jniLibs / CMake).
 class CoreLocator {
   static String? _cachedRoot;
+  static String? _androidNativeLibDir;
+  static String? _supportDirOverride;
+  static String? _savesDirOverride;
+
+  static const helpersName = 'libhost_helpers.so';
+
+  /// Call once at startup (sets writable system/save dirs on mobile).
+  static Future<void> init() async {
+    if (Platform.isAndroid) {
+      try {
+        const channel = MethodChannel('mame_cabinet/native');
+        final dir = await channel.invokeMethod<String>('nativeLibraryDir');
+        if (dir != null && dir.isNotEmpty) {
+          _androidNativeLibDir = dir;
+        }
+      } catch (_) {}
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      final support = await getApplicationSupportDirectory();
+      _supportDirOverride = p.join(support.path, 'libretro_system');
+      _savesDirOverride = p.join(support.path, 'libretro_saves');
+      Directory(_supportDirOverride!).createSync(recursive: true);
+      Directory(_savesDirOverride!).createSync(recursive: true);
+    }
+  }
 
   static String get projectRoot {
     _cachedRoot ??= _discoverRoot();
@@ -502,14 +535,14 @@ class CoreLocator {
     for (final start in [
       Directory.current.path,
       File(Platform.resolvedExecutable).parent.path,
-      // flutter run bundle: .../build/linux/x64/debug/bundle
-      p.normalize(p.join(File(Platform.resolvedExecutable).parent.path, '..', '..', '..', '..', '..')),
+      p.normalize(
+        p.join(File(Platform.resolvedExecutable).parent.path, '..', '..', '..', '..', '..'),
+      ),
     ]) {
       final found = _walkForRoot(start);
       if (found != null) return found;
     }
 
-    // Last resort: known workspace path if present (dev machine).
     const fallback = '/home/mohammed/Desktop/mame';
     if (_looksLikeRoot(fallback)) return fallback;
 
@@ -535,17 +568,69 @@ class CoreLocator {
 
   static String get nativeDir => p.join(projectRoot, 'native');
   static String get coresDir => p.join(nativeDir, 'cores');
-  static String get supportDir => p.join(nativeDir, 'support');
-  static String get savesDir => p.join(nativeDir, 'saves');
-  static String get helpersPath => p.join(nativeDir, 'libhost_helpers.so');
+  static String get supportDir =>
+      _supportDirOverride ?? p.join(nativeDir, 'support');
+  static String get savesDir => _savesDirOverride ?? p.join(nativeDir, 'saves');
+
+  /// Absolute path or Android soname that [DynamicLibrary.open] can load.
+  static String? resolveLibraryPath(String nameOrPath) {
+    // Absolute / relative filesystem path.
+    if (nameOrPath.contains('/') || nameOrPath.contains('\\')) {
+      final abs = p.normalize(p.absolute(nameOrPath));
+      if (File(abs).existsSync()) return abs;
+    }
+
+    final base = p.basename(nameOrPath);
+    final candidates = <String>[
+      if (_androidNativeLibDir != null) p.join(_androidNativeLibDir!, base),
+      if (_androidNativeLibDir != null && !base.startsWith('lib'))
+        p.join(_androidNativeLibDir!, 'lib$base'),
+      p.join(coresDir, base),
+      p.join(nativeDir, base),
+      p.join(File(Platform.resolvedExecutable).parent.path, 'cores', base),
+      p.join(Directory.current.path, 'native', 'cores', base),
+      p.join(Directory.current.path, 'native', base),
+    ];
+
+    for (final c in candidates) {
+      if (File(c).existsSync()) return c;
+    }
+
+    // Android linker can resolve jniLibs by soname alone.
+    if (Platform.isAndroid) {
+      if (base.startsWith('lib') && base.endsWith('.so')) return base;
+      if (base.endsWith('.so')) return 'lib$base';
+      return 'lib$base.so';
+    }
+
+    return null;
+  }
+
+  static bool libraryExists(String nameOrPath) {
+    final resolved = resolveLibraryPath(nameOrPath);
+    if (resolved == null) return false;
+    if (!resolved.contains('/')) {
+      // Soname-only: assume packaged in APK (verified at DynamicLibrary.open).
+      return Platform.isAndroid;
+    }
+    return File(resolved).existsSync();
+  }
+
+  static String get helpersPath =>
+      resolveLibraryPath(helpersName) ?? p.join(nativeDir, helpersName);
 
   static String? _core(String name) {
-    for (final c in [
-      p.join(coresDir, name),
-      p.join(File(Platform.resolvedExecutable).parent.path, 'cores', name),
-      p.join(Directory.current.path, 'native', 'cores', name),
-    ]) {
-      if (File(c).existsSync()) return c;
+    // Prefer Android jniLibs naming (lib*.so) then desktop names.
+    final names = <String>[
+      if (!name.startsWith('lib')) 'lib$name',
+      name,
+      if (name.endsWith('.so')) name.replaceAll('.so', '_android.so'),
+    ];
+    for (final n in names) {
+      final path = resolveLibraryPath(n);
+      if (path != null && (path.contains('/') ? File(path).existsSync() : Platform.isAndroid)) {
+        return path;
+      }
     }
     return null;
   }
@@ -574,9 +659,13 @@ class CoreLocator {
     buf.writeln('cwd=${Directory.current.path}');
     buf.writeln('exe=${Platform.resolvedExecutable}');
     buf.writeln('root=$projectRoot');
-    buf.writeln('helpers=${File(helpersPath).existsSync() ? 'OK' : 'MISSING'} ($helpersPath)');
+    buf.writeln('androidNativeLib=${_androidNativeLibDir ?? 'n/a'}');
+    buf.writeln(
+      'helpers=${libraryExists(helpersName) ? 'OK' : 'MISSING'} ($helpersPath)',
+    );
     buf.writeln('mame2003+=${mame2003Plus() ?? 'MISSING'}');
     buf.writeln('fbneo=${fbneo() ?? 'MISSING'}');
+    buf.writeln('support=$supportDir');
     return buf.toString().trim();
   }
 }

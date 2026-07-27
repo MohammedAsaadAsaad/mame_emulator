@@ -67,6 +67,7 @@ class EmulatorController extends ChangeNotifier {
   void _onHost() => notifyListeners();
 
   Future<void> init() async {
+    await CoreLocator.init();
     await keyBindings.load();
     await _loadSpeed();
     await _loadShaderPrefs();
@@ -75,7 +76,7 @@ class EmulatorController extends ChangeNotifier {
     _clampMenuIndex();
     // Do not block UI on opening a 40–70MB .so — load core when a ROM is chosen.
     final core = CoreLocator.bestArcadeCore();
-    if (core == null || !File(CoreLocator.helpersPath).existsSync()) {
+    if (core == null || !CoreLocator.libraryExists(CoreLocator.helpersName)) {
       _host.status = 'Setup needed — see status below';
       _flash('CORE PATH ISSUE');
       debugPrint(CoreLocator.diagnose());
@@ -148,8 +149,10 @@ class EmulatorController extends ChangeNotifier {
       notifyListeners();
       throw StateError(msg);
     }
-    if (!File(CoreLocator.helpersPath).existsSync()) {
-      final msg = 'Missing libhost_helpers.so — run ./scripts/build_helpers.sh';
+    if (!CoreLocator.libraryExists(CoreLocator.helpersName)) {
+      final msg = Platform.isAndroid
+          ? 'Missing libhost_helpers.so in APK (rebuild with NDK)'
+          : 'Missing libhost_helpers.so — run ./scripts/build_helpers.sh';
       _host.status = msg;
       _flash('HELPERS MISSING');
       notifyListeners();

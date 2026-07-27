@@ -66,11 +66,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK
+        run: sdkmanager "ndk;26.3.11579264"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Fetch Android natives (cores + helpers)
+        env:
+          ANDROID_NDK_VERSION: "26.3.11579264"
+        run: |
+          chmod +x scripts/fetch_android_cores.sh
+          ./scripts/fetch_android_cores.sh
       - name: Build split APKs
         run: flutter build apk --release --split-per-abi
       - name: Collect APKs
@@ -78,10 +87,6 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/mame_cabinet-armeabi-v7a.apk
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/mame_cabinet-arm64-v8a.apk
-          # Also keep universal if present
-          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk dist/mame_cabinet-universal.apk
-          fi
           ls -lh dist
       - uses: actions/upload-artifact@v4
         with:

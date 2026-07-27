@@ -47,6 +47,9 @@ native/support/
 native/savestates/
 *.state
 
+# Android jniLibs cores (large) — fetch with scripts/fetch_android_cores.sh
+android/app/src/main/jniLibs/**/*.so
+
 # Keep helper library source / built helper for Linux local runs if present
 !native/shim/
 !scripts/

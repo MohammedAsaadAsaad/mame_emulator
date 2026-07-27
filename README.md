@@ -30,14 +30,22 @@ Download from the **Actions** run → Artifacts.
 ## Setup (local)
 
 ```bash
-./scripts/fetch_cores.sh   # Linux x86_64 libretro cores
+./scripts/fetch_cores.sh          # Linux x86_64 libretro cores
 ./scripts/build_helpers.sh
 flutter pub get
 flutter run -d linux
 ```
 
+### Android
+
+```bash
+# Requires Android SDK + NDK 26.3.11579264
+./scripts/fetch_android_cores.sh  # arm64-v8a + armeabi-v7a cores + helpers
+flutter build apk --release --split-per-abi
+```
+
 Point the app at your ROM folders via **Games → Scan**, **Import**, or drag-drop.  
-Public-domain test ROM: [gridlee](https://github.com/libretro/libretro-super) / place legally obtained zips yourself (`roms/` is gitignored).
+Public-domain test ROM notes live in `roms/README.md` (`roms/*.zip` is gitignored).
 
 ## Default keys
 
