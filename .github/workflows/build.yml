@@ -25,11 +25,27 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
       - run: flutter pub get
+      - name: Fetch Linux natives (cores + helpers)
+        run: |
+          chmod +x scripts/fetch_cores.sh
+          ./scripts/fetch_cores.sh
       - run: flutter build linux --release
       - name: Package
         run: |
           mkdir -p dist
           cp -a build/linux/x64/release/bundle dist/mame_cabinet-linux-x64
+          # Sanity: cores + helpers must be inside the bundle
+          if ! find dist/mame_cabinet-linux-x64/cores -name '*.so' 2>/dev/null | grep -q .; then
+            echo 'bundle missing cores/*.so'
+            find dist/mame_cabinet-linux-x64 -type f
+            exit 1
+          fi
+          if [ ! -f dist/mame_cabinet-linux-x64/libhost_helpers.so ] \
+             && [ ! -f dist/mame_cabinet-linux-x64/lib/libhost_helpers.so ]; then
+            echo 'bundle missing libhost_helpers.so'
+            exit 1
+          fi
+          echo 'Package contains cores + libhost_helpers.so'
           (cd dist && tar -czf mame_cabinet-linux-x64.tar.gz mame_cabinet-linux-x64)
       - uses: actions/upload-artifact@v4
         with:

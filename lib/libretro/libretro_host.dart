@@ -625,9 +625,14 @@ class CoreLocator {
         p.join(_androidNativeLibDir!, 'lib$base'),
       p.join(coresDir, base),
       p.join(nativeDir, base),
-      // Packaged desktop: next to the executable / in cores/
+      // Packaged desktop: next to the executable / in cores/ / in lib/
       p.join(_exeDir, 'cores', base),
       p.join(_exeDir, base),
+      p.join(_exeDir, 'lib', base),
+      // Linux Flutter bundle often uses cwd = bundle root
+      p.join(Directory.current.path, 'cores', base),
+      p.join(Directory.current.path, 'lib', base),
+      p.join(Directory.current.path, base),
       p.join(Directory.current.path, 'native', 'cores', base),
       p.join(Directory.current.path, 'native', base),
     ];
@@ -709,6 +714,7 @@ class CoreLocator {
     final buf = StringBuffer();
     buf.writeln('cwd=${Directory.current.path}');
     buf.writeln('exe=${Platform.resolvedExecutable}');
+    buf.writeln('exeDir=$_exeDir');
     buf.writeln('root=$projectRoot');
     buf.writeln('androidNativeLib=${_androidNativeLibDir ?? 'n/a'}');
     buf.writeln(

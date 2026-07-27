@@ -126,3 +126,22 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Libretro cores + host helpers (fetch with scripts/fetch_cores.sh).
+set(MAME_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../native")
+set(MAME_CORES_DIR "${MAME_NATIVE_DIR}/cores")
+if(EXISTS "${MAME_CORES_DIR}")
+  install(DIRECTORY "${MAME_CORES_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/cores"
+    COMPONENT Runtime
+    FILES_MATCHING PATTERN "*.so")
+endif()
+if(EXISTS "${MAME_NATIVE_DIR}/libhost_helpers.so")
+  # Beside the binary (CoreLocator: exe_dir/) and in lib/ (Flutter RPATH).
+  install(FILES "${MAME_NATIVE_DIR}/libhost_helpers.so"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    COMPONENT Runtime)
+  install(FILES "${MAME_NATIVE_DIR}/libhost_helpers.so"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
