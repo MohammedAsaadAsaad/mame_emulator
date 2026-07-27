@@ -1,0 +1,68 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ / VS Code
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+.packages
+
+# Symbolication / obfuscation
+app.*.symbols
+app.*.map.json
+
+# Android Studio
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Large native core binaries — fetch with scripts/fetch_cores.sh
+native/cores/*.so
+native/cores/*.dylib
+native/cores/*.dll
+native/saves/
+native/support/
+native/savestates/
+*.state
+
+# Keep helper library source / built helper for Linux local runs if present
+!native/shim/
+!scripts/
+native/libhost_helpers.so
+native/shim/*.so
+tool/minhost
+tool/*.o
+
+
+# User-provided ROMs (do not upload copyrighted dumps)
+roms/*.zip
+roms/*.7z
+!roms/README.md
+
+# Local secrets / keystores
+*.jks
+*.keystore
+key.properties
+.env

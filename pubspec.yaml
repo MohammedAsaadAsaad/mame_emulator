@@ -1,0 +1,56 @@
+name: mame_cabinet
+description: Flutter arcade cabinet front-end with libretro cores and save states.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.4
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  desktop_drop: ^0.7.1
+  shared_preferences: ^2.5.5
+  file_picker: ^11.0.2
+  window_manager: ^0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/demo_frame.png
+    - assets/icon/app_icon.png
+  fonts:
+    - family: PressStart2P
+      fonts:
+        - asset: assets/fonts/PressStart2P-Regular.ttf
+  shaders:
+    - shaders/nes_enhance.frag
+    - shaders/nes_hqx.frag
+    - shaders/nes_crt.frag
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/app_icon.png
+  min_sdk_android: 21
+  windows:
+    generate: true
+    image_path: assets/icon/app_icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/icon/app_icon.png
+  linux:
+    generate: true
+    image_path: assets/icon/app_icon.png
+  web:
+    generate: false
