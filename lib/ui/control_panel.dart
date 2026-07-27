@@ -5,7 +5,16 @@ import 'widgets/arcade_joystick.dart';
 import 'widgets/arcade_service_button.dart';
 import 'widgets/glossy_action_button.dart';
 
-/// Shared chrome for the metal control deck.
+/// True for phone / small-tablet landscape where the game should fill the screen.
+bool isCompactLandscape(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+  if (!landscape) return false;
+  // Phones & small tablets: short side under ~600, or low landscape height.
+  return size.shortestSide < 600 || size.height < 520;
+}
+
+/// Shared chrome for the metal control deck (portrait / wide desktop rails).
 BoxDecoration controlDeckDecoration({bool sideRail = false}) {
   return BoxDecoration(
     gradient: LinearGradient(
@@ -75,55 +84,117 @@ class ControlPanel extends StatelessWidget {
   }
 }
 
-/// Landscape left rail: COIN / START + stick (compact so the CRT stays large).
+/// Landscape left: COIN / START + stick.
+/// [overlay] = transparent HUD over a full-bleed game (small screens).
 class LandscapeLeftControls extends StatelessWidget {
-  const LandscapeLeftControls({super.key, required this.controller});
+  const LandscapeLeftControls({
+    super.key,
+    required this.controller,
+    this.overlay = false,
+  });
 
   final EmulatorController controller;
+  final bool overlay;
 
   @override
   Widget build(BuildContext context) {
+    final stick = overlay ? 120.0 : 112.0;
+    final coin = overlay ? 44.0 : 40.0;
+
+    final column = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ServiceButtons(
+          controller: controller,
+          compact: true,
+          diameter: coin,
+        ),
+        SizedBox(height: overlay ? 16 : 12),
+        ArcadeJoystick(
+          size: stick,
+          onChanged: (o) => controller.setStick(o.dx, o.dy),
+        ),
+      ],
+    );
+
+    if (overlay) {
+      return SafeArea(
+        right: false,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: _SoftPadChrome(child: column),
+        ),
+      );
+    }
+
     return Container(
-      width: 108,
+      width: 120,
       decoration: controlDeckDecoration(sideRail: true),
       child: SafeArea(
         right: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ServiceButtons(controller: controller, compact: true),
-              const SizedBox(height: 12),
-              ArcadeJoystick(
-                size: 92,
-                onChanged: (o) => controller.setStick(o.dx, o.dy),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          child: column,
         ),
       ),
     );
   }
 }
 
-/// Landscape right rail: A–D cluster.
+/// Landscape right: A–D cluster.
 class LandscapeRightControls extends StatelessWidget {
-  const LandscapeRightControls({super.key, required this.controller});
+  const LandscapeRightControls({
+    super.key,
+    required this.controller,
+    this.overlay = false,
+  });
 
   final EmulatorController controller;
+  final bool overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = overlay ? 0.88 : 0.78;
+    final cluster = ActionCluster(controller: controller, scale: scale);
+
+    if (overlay) {
+      return SafeArea(
+        left: false,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: _SoftPadChrome(child: cluster),
+        ),
+      );
+    }
+
+    return Container(
+      width: 120,
+      decoration: controlDeckDecoration(sideRail: true),
+      child: SafeArea(
+        left: false,
+        child: Center(child: cluster),
+      ),
+    );
+  }
+}
+
+/// Soft translucent plate behind overlay controls (readable, not opaque rails).
+class _SoftPadChrome extends StatelessWidget {
+  const _SoftPadChrome({required this.child});
+
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 108,
-      decoration: controlDeckDecoration(sideRail: true),
-      child: SafeArea(
-        left: false,
-        child: Center(
-          child: ActionCluster(controller: controller, scale: 0.62),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
+      child: child,
     );
   }
 }
@@ -133,16 +204,19 @@ class ServiceButtons extends StatelessWidget {
     super.key,
     required this.controller,
     this.compact = false,
+    this.diameter,
   });
 
   final EmulatorController controller;
   final bool compact;
+  final double? diameter;
 
   @override
   Widget build(BuildContext context) {
-    final d = compact ? 34.0 : 52.0;
+    final d = diameter ?? (compact ? 40.0 : 52.0);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         ArcadeServiceButton(
           label: 'COIN',
@@ -150,7 +224,7 @@ class ServiceButtons extends StatelessWidget {
           faceColor: const Color(0xFFD4AF37),
           onPressed: controller.insertCoin,
         ),
-        SizedBox(width: compact ? 10 : 36),
+        SizedBox(width: compact ? 12 : 36),
         ArcadeServiceButton(
           label: 'START',
           diameter: d,

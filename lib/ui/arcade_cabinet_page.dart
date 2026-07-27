@@ -138,7 +138,7 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
         behavior: HitTestBehavior.opaque,
         onTap: () {
           _focus.requestFocus();
-          if (_emu.isFullscreen) {
+          if (_emu.isFullscreen || isCompactLandscape(context)) {
             setState(() => _fsChromeVisible = !_fsChromeVisible);
           }
         },
@@ -154,15 +154,19 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
                 final fs = _emu.isFullscreen;
                 final landscape =
                     MediaQuery.orientationOf(context) == Orientation.landscape;
+                final compactLand = isCompactLandscape(context);
                 final showPad = _emu.showOnScreenPad && (!fs || _fsChromeVisible);
+                // Small landscape: game fills screen; chrome/toolbar stay overlays.
+                final immersiveLand = landscape && compactLand;
+                final showTopBar = !fs && !immersiveLand;
 
                 return Stack(
                   fit: StackFit.expand,
                   children: [
                     Column(
                       children: [
-                        if (!fs) SizedBox(height: MediaQuery.paddingOf(context).top),
-                        if (!fs)
+                        if (showTopBar) SizedBox(height: MediaQuery.paddingOf(context).top),
+                        if (showTopBar)
                           EmulatorToolbar(
                             controller: _emu,
                             onLibrary: _openLibrary,
@@ -173,44 +177,50 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
                             onSettings: _openSettings,
                           ),
                         Expanded(
-                          child: landscape && showPad
-                              ? Row(
-                                  children: [
-                                    LandscapeLeftControls(controller: _emu),
-                                    Expanded(
-                                      child: ColoredBox(
-                                        color: const Color(0xFF050505),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(fs ? 0 : 6),
-                                          child: _viewport(expand: true),
-                                        ),
-                                      ),
-                                    ),
-                                    LandscapeRightControls(controller: _emu),
-                                  ],
+                          child: immersiveLand
+                              ? _CompactLandscapePlayfield(
+                                  showPad: showPad,
+                                  viewport: _viewport(expand: true),
+                                  controller: _emu,
                                 )
-                              : Column(
-                                  children: [
-                                    Expanded(
-                                      child: Container(
-                                        width: double.infinity,
-                                        color: const Color(0xFF050505),
-                                        padding: EdgeInsets.fromLTRB(
-                                          fs ? 0 : 6,
-                                          fs ? 0 : 6,
-                                          fs ? 0 : 6,
-                                          fs ? 0 : 4,
+                              : landscape && showPad
+                                  ? Row(
+                                      children: [
+                                        LandscapeLeftControls(controller: _emu),
+                                        Expanded(
+                                          child: ColoredBox(
+                                            color: const Color(0xFF050505),
+                                            child: Padding(
+                                              padding: EdgeInsets.all(fs ? 0 : 6),
+                                              child: _viewport(expand: true),
+                                            ),
+                                          ),
                                         ),
-                                        child: _viewport(expand: fs || landscape),
-                                      ),
+                                        LandscapeRightControls(controller: _emu),
+                                      ],
+                                    )
+                                  : Column(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            width: double.infinity,
+                                            color: const Color(0xFF050505),
+                                            padding: EdgeInsets.fromLTRB(
+                                              fs ? 0 : 6,
+                                              fs ? 0 : 6,
+                                              fs ? 0 : 6,
+                                              fs ? 0 : 4,
+                                            ),
+                                            child: _viewport(expand: fs || landscape),
+                                          ),
+                                        ),
+                                        if (showPad) ControlPanel(controller: _emu),
+                                      ],
                                     ),
-                                    if (showPad) ControlPanel(controller: _emu),
-                                  ],
-                                ),
                         ),
                       ],
                     ),
-                    if (fs && _fsChromeVisible)
+                    if ((fs || immersiveLand) && _fsChromeVisible)
                       Positioned(
                         top: MediaQuery.paddingOf(context).top,
                         left: 0,
@@ -265,6 +275,48 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Small-screen landscape: game edge-to-edge with translucent control overlays.
+class _CompactLandscapePlayfield extends StatelessWidget {
+  const _CompactLandscapePlayfield({
+    required this.showPad,
+    required this.viewport,
+    required this.controller,
+  });
+
+  final bool showPad;
+  final Widget viewport;
+  final EmulatorController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(child: viewport),
+          if (showPad) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: LandscapeLeftControls(
+                controller: controller,
+                overlay: true,
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: LandscapeRightControls(
+                controller: controller,
+                overlay: true,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -100,11 +100,15 @@ class EmulatorToolbar extends StatelessWidget {
                 icon: controller.shadersEnabled
                     ? Icons.auto_awesome
                     : Icons.auto_awesome_outlined,
-                label: controller.shadersEnabled
-                    ? controller.enhancementMode.shortLabel
-                    : 'FX',
+                label: controller.shadersEnabled ? 'FX On' : 'FX Off',
                 onTap: controller.toggleShaders,
-                onLongPress: () => _pickShader(ctx, controller),
+              ),
+            ),
+            Builder(
+              builder: (ctx) => _Tool(
+                icon: Icons.tune,
+                label: controller.enhancementMode.shortLabel,
+                onTap: () => _pickShader(ctx, controller),
               ),
             ),
             _Tool(
@@ -122,29 +126,47 @@ class EmulatorToolbar extends StatelessWidget {
   void _pickShader(BuildContext context, EmulatorController emu) {
     final box = context.findRenderObject() as RenderBox?;
     final pos = box?.localToGlobal(Offset.zero) ?? Offset.zero;
-    showMenu<ImageEnhancementMode>(
+    showMenu<Object>(
       context: context,
-      position: RelativeRect.fromLTRB(pos.dx, pos.dy + 44, pos.dx + 160, 0),
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy + 44, pos.dx + 200, 0),
       color: const Color(0xFF222222),
       items: [
+        PopupMenuItem(
+          value: 'off',
+          child: Text(
+            'Off (raw pixels)',
+            style: TextStyle(
+              color: !emu.shadersEnabled
+                  ? const Color(0xFFE8C84A)
+                  : Colors.white,
+              fontWeight: !emu.shadersEnabled ? FontWeight.w800 : FontWeight.w500,
+            ),
+          ),
+        ),
+        const PopupMenuDivider(),
         for (final mode in ImageEnhancementMode.values)
           PopupMenuItem(
             value: mode,
             child: Text(
               mode.label,
               style: TextStyle(
-                color: mode == emu.enhancementMode
+                color: emu.shadersEnabled && mode == emu.enhancementMode
                     ? const Color(0xFFE8C84A)
                     : Colors.white,
-                fontWeight: mode == emu.enhancementMode
+                fontWeight: emu.shadersEnabled && mode == emu.enhancementMode
                     ? FontWeight.w800
                     : FontWeight.w500,
               ),
             ),
           ),
       ],
-    ).then((mode) {
-      if (mode != null) emu.setEnhancementMode(mode);
+    ).then((value) {
+      if (value == null) return;
+      if (value == 'off') {
+        emu.setShadersEnabled(false);
+      } else if (value is ImageEnhancementMode) {
+        emu.setEnhancementMode(value);
+      }
     });
   }
 }

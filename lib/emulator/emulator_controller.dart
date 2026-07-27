@@ -45,8 +45,8 @@ class EmulatorController extends ChangeNotifier {
   bool isFullscreen = false;
   double emulationSpeed = 1.0;
 
-  /// Display shaders (NES-style CRT / upscale).
-  bool shadersEnabled = true;
+  /// Display shaders (NES-style CRT / upscale). Off by default.
+  bool shadersEnabled = false;
   ImageEnhancementMode enhancementMode = ImageEnhancementMode.crtArcade;
 
   /// Sound on/off and master volume (0–1).
@@ -137,7 +137,7 @@ class EmulatorController extends ChangeNotifier {
 
   Future<void> _loadShaderPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    shadersEnabled = prefs.getBool('shaders_enabled') ?? true;
+    shadersEnabled = prefs.getBool('shaders_enabled') ?? false;
     enhancementMode = ImageEnhancementMode.fromId(
           prefs.getString('enhancement_mode'),
         ) ??
