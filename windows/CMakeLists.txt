@@ -106,3 +106,22 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Libretro cores + host helpers (fetch with scripts/fetch_windows_cores.ps1).
+set(MAME_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../native")
+set(MAME_CORES_DIR "${MAME_NATIVE_DIR}/cores")
+if(EXISTS "${MAME_CORES_DIR}")
+  install(DIRECTORY "${MAME_CORES_DIR}/"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/cores"
+    COMPONENT Runtime
+    FILES_MATCHING PATTERN "*.dll")
+endif()
+foreach(HELPER_CANDIDATE
+    "${MAME_NATIVE_DIR}/host_helpers.dll"
+    "${MAME_NATIVE_DIR}/libhost_helpers.dll")
+  if(EXISTS "${HELPER_CANDIDATE}")
+    install(FILES "${HELPER_CANDIDATE}"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+      COMPONENT Runtime)
+  endif()
+endforeach()

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Glossy plastic arcade action button with chrome bezel.
+///
+/// Uses [Listener] so presses register immediately (no gesture-arena delay).
 class GlossyActionButton extends StatefulWidget {
   const GlossyActionButton({
     super.key,
@@ -10,6 +12,7 @@ class GlossyActionButton extends StatefulWidget {
     required this.onDown,
     required this.onUp,
     this.diameter = 64,
+    this.ghost = false,
   });
 
   final String label;
@@ -18,18 +21,22 @@ class GlossyActionButton extends StatefulWidget {
   final VoidCallback onUp;
   final double diameter;
 
+  /// Slightly translucent face for fullscreen / overlay pads.
+  final bool ghost;
+
   @override
   State<GlossyActionButton> createState() => _GlossyActionButtonState();
 }
 
 class _GlossyActionButtonState extends State<GlossyActionButton> {
   bool _down = false;
+  int? _activePointer;
 
   void _press(bool down) {
     if (_down == down) return;
     setState(() => _down = down);
     if (down) {
-      HapticFeedback.lightImpact();
+      HapticFeedback.selectionClick();
       widget.onDown();
     } else {
       widget.onUp();
@@ -39,21 +46,46 @@ class _GlossyActionButtonState extends State<GlossyActionButton> {
   @override
   Widget build(BuildContext context) {
     final d = widget.diameter;
-    return GestureDetector(
-      onTapDown: (_) => _press(true),
-      onTapUp: (_) => _press(false),
-      onTapCancel: () => _press(false),
-      child: AnimatedScale(
-        scale: _down ? 0.92 : 1.0,
-        duration: const Duration(milliseconds: 50),
-        child: SizedBox(
-          width: d,
-          height: d,
-          child: CustomPaint(
-            painter: _ButtonPainter(
-              color: widget.color,
-              label: widget.label,
-              pressed: _down,
+    // Extra hit padding so nearby taps still catch the button.
+    final hit = d * 1.18;
+    final opacity = widget.ghost ? 0.78 : 1.0;
+
+    return SizedBox(
+      width: hit,
+      height: hit,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          if (_activePointer != null) return;
+          _activePointer = e.pointer;
+          _press(true);
+        },
+        onPointerUp: (e) {
+          if (e.pointer != _activePointer) return;
+          _activePointer = null;
+          _press(false);
+        },
+        onPointerCancel: (e) {
+          if (e.pointer != _activePointer) return;
+          _activePointer = null;
+          _press(false);
+        },
+        child: Center(
+          child: Opacity(
+            opacity: opacity,
+            child: Transform.scale(
+              scale: _down ? 0.94 : 1.0,
+              child: SizedBox(
+                width: d,
+                height: d,
+                child: CustomPaint(
+                  painter: _ButtonPainter(
+                    color: widget.color,
+                    label: widget.label,
+                    pressed: _down,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -78,14 +110,12 @@ class _ButtonPainter extends CustomPainter {
     final c = Offset(size.width / 2, size.height / 2);
     final r = size.width / 2;
 
-    // Drop shadow
     canvas.drawCircle(
       c.translate(0, pressed ? 2 : 5),
       r * 0.92,
       Paint()..color = const Color(0x77000000),
     );
 
-    // Chrome bezel
     canvas.drawCircle(
       c,
       r,
@@ -101,14 +131,14 @@ class _ButtonPainter extends CustomPainter {
         ).createShader(Rect.fromCircle(center: c, radius: r)),
     );
 
-    // Inner well
     canvas.drawCircle(c, r * 0.82, Paint()..color = const Color(0xFF2A2A2A));
 
-    // Plastic face
     final faceR = r * 0.74;
     final hsl = HSLColor.fromColor(color);
-    final light = hsl.withLightness((hsl.lightness + 0.22).clamp(0.0, 1.0)).toColor();
-    final dark = hsl.withLightness((hsl.lightness - 0.18).clamp(0.0, 1.0)).toColor();
+    final light =
+        hsl.withLightness((hsl.lightness + 0.22).clamp(0.0, 1.0)).toColor();
+    final dark =
+        hsl.withLightness((hsl.lightness - 0.18).clamp(0.0, 1.0)).toColor();
 
     canvas.drawCircle(
       c.translate(0, pressed ? 1.5 : 0),
@@ -122,7 +152,6 @@ class _ButtonPainter extends CustomPainter {
         ).createShader(Rect.fromCircle(center: c, radius: faceR)),
     );
 
-    // Gloss cap
     canvas.drawOval(
       Rect.fromCenter(
         center: c + Offset(0, -faceR * 0.35),
@@ -140,14 +169,12 @@ class _ButtonPainter extends CustomPainter {
         ).createShader(Rect.fromCircle(center: c, radius: faceR)),
     );
 
-    // Specular dot
     canvas.drawCircle(
       c + Offset(-faceR * 0.28, -faceR * 0.32),
       faceR * 0.12,
       Paint()..color = const Color(0xCCFFFFFF),
     );
 
-    // Label
     final tp = TextPainter(
       text: TextSpan(
         text: label,
@@ -156,13 +183,20 @@ class _ButtonPainter extends CustomPainter {
           fontSize: faceR * 0.72,
           fontWeight: FontWeight.w800,
           shadows: const [
-            Shadow(color: Color(0x88000000), blurRadius: 2, offset: Offset(0, 1)),
+            Shadow(
+              color: Color(0x88000000),
+              blurRadius: 2,
+              offset: Offset(0, 1),
+            ),
           ],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, c.translate(0, pressed ? 1.5 : 0) - Offset(tp.width / 2, tp.height / 2));
+    tp.paint(
+      canvas,
+      c.translate(0, pressed ? 1.5 : 0) - Offset(tp.width / 2, tp.height / 2),
+    );
   }
 
   @override

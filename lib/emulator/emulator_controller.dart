@@ -194,7 +194,9 @@ class EmulatorController extends ChangeNotifier {
     if (!CoreLocator.libraryExists(CoreLocator.helpersName)) {
       final msg = Platform.isAndroid
           ? 'Missing libhost_helpers.so in APK (rebuild with NDK)'
-          : 'Missing libhost_helpers.so — run ./scripts/build_helpers.sh';
+          : Platform.isWindows
+              ? 'Missing host_helpers.dll — run scripts/fetch_windows_cores.ps1'
+              : 'Missing libhost_helpers.so — run ./scripts/build_helpers.sh';
       _host.status = msg;
       _flash('HELPERS MISSING');
       notifyListeners();
@@ -718,19 +720,19 @@ class EmulatorController extends ChangeNotifier {
   void _applyDirections() {
     _host.setButton(
       RETRO_DEVICE_ID_JOYPAD_LEFT,
-      _stickX < -0.35 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_LEFT),
+      _stickX < -0.22 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_LEFT),
     );
     _host.setButton(
       RETRO_DEVICE_ID_JOYPAD_RIGHT,
-      _stickX > 0.35 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_RIGHT),
+      _stickX > 0.22 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_RIGHT),
     );
     _host.setButton(
       RETRO_DEVICE_ID_JOYPAD_UP,
-      _stickY < -0.35 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_UP),
+      _stickY < -0.22 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_UP),
     );
     _host.setButton(
       RETRO_DEVICE_ID_JOYPAD_DOWN,
-      _stickY > 0.35 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_DOWN),
+      _stickY > 0.22 || _keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_DOWN),
     );
   }
 

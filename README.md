@@ -37,6 +37,16 @@ flutter pub get
 flutter run -d linux
 ```
 
+### Windows
+
+```powershell
+.\scripts\fetch_windows_cores.ps1   # cores + host_helpers.dll (needs VS Build Tools)
+flutter pub get
+flutter run -d windows
+```
+
+CI packages `cores\*.dll` and `host_helpers.dll` next to the exe inside the zip.
+
 ### Android
 
 ```bash

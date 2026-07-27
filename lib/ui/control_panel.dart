@@ -47,39 +47,58 @@ class ControlPanel extends StatelessWidget {
   const ControlPanel({
     super.key,
     required this.controller,
+    this.ghost = false,
   });
 
   final EmulatorController controller;
 
+  /// Fullscreen / overlay: translucent pad chrome and ghost stick/buttons.
+  final bool ghost;
+
   @override
   Widget build(BuildContext context) {
+    final body = SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ServiceButtons(controller: controller),
+            const SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ArcadeJoystick(
+                  size: 148,
+                  ghost: ghost,
+                  onChanged: (o) => controller.setStick(o.dx, o.dy),
+                ),
+                const Spacer(),
+                ActionCluster(controller: controller, ghost: ghost),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ghost) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Container(
+          width: double.infinity,
+          color: Colors.black.withValues(alpha: 0.22),
+          child: body,
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       decoration: controlDeckDecoration(),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ServiceButtons(controller: controller),
-              const SizedBox(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ArcadeJoystick(
-                    size: 148,
-                    onChanged: (o) => controller.setStick(o.dx, o.dy),
-                  ),
-                  const Spacer(),
-                  ActionCluster(controller: controller),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: body,
     );
   }
 }
@@ -113,6 +132,7 @@ class LandscapeLeftControls extends StatelessWidget {
         SizedBox(height: overlay ? 16 : 12),
         ArcadeJoystick(
           size: stick,
+          ghost: overlay,
           onChanged: (o) => controller.setStick(o.dx, o.dy),
         ),
       ],
@@ -122,19 +142,24 @@ class LandscapeLeftControls extends StatelessWidget {
       return SafeArea(
         right: false,
         child: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: _SoftPadChrome(child: column),
+          padding: const EdgeInsets.only(left: 4),
+          // Absorb taps so fullscreen chrome toggle doesn't steal presses.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: column,
+          ),
         ),
       );
     }
 
     return Container(
-      width: 120,
+      width: 156,
       decoration: controlDeckDecoration(sideRail: true),
       child: SafeArea(
         right: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: column,
         ),
       ),
@@ -156,45 +181,33 @@ class LandscapeRightControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = overlay ? 0.88 : 0.78;
-    final cluster = ActionCluster(controller: controller, scale: scale);
+    final cluster = ActionCluster(
+      controller: controller,
+      scale: scale,
+      ghost: overlay,
+    );
 
     if (overlay) {
       return SafeArea(
         left: false,
         child: Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: _SoftPadChrome(child: cluster),
+          padding: const EdgeInsets.only(right: 4),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: cluster,
+          ),
         ),
       );
     }
 
     return Container(
-      width: 120,
+      width: 156,
       decoration: controlDeckDecoration(sideRail: true),
       child: SafeArea(
         left: false,
         child: Center(child: cluster),
       ),
-    );
-  }
-}
-
-/// Soft translucent plate behind overlay controls (readable, not opaque rails).
-class _SoftPadChrome extends StatelessWidget {
-  const _SoftPadChrome({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: child,
     );
   }
 }
@@ -241,10 +254,12 @@ class ActionCluster extends StatelessWidget {
     super.key,
     required this.controller,
     this.scale = 1,
+    this.ghost = false,
   });
 
   final EmulatorController controller;
   final double scale;
+  final bool ghost;
 
   static const _cyan = Color(0xFF2EC8D8);
   static const _red = Color(0xFFE02020);
@@ -252,20 +267,22 @@ class ActionCluster extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = 62.0 * scale;
-    final w = 150.0 * scale;
-    final h = 140.0 * scale;
+    // Room for enlarged hit targets on each button.
+    final w = 168.0 * scale;
+    final h = 158.0 * scale;
     return SizedBox(
       width: w,
       height: h,
       child: Stack(
         children: [
           Positioned(
-            left: 8 * scale,
-            top: 8 * scale,
+            left: 4 * scale,
+            top: 4 * scale,
             child: GlossyActionButton(
               label: 'C',
               color: _cyan,
               diameter: d,
+              ghost: ghost,
               onDown: () => controller.buttonDown(PadButton.c),
               onUp: () => controller.buttonUp(PadButton.c),
             ),
@@ -277,28 +294,31 @@ class ActionCluster extends StatelessWidget {
               label: 'D',
               color: _cyan,
               diameter: d,
+              ghost: ghost,
               onDown: () => controller.buttonDown(PadButton.d),
               onUp: () => controller.buttonUp(PadButton.d),
             ),
           ),
           Positioned(
             left: 0,
-            bottom: 8 * scale,
+            bottom: 4 * scale,
             child: GlossyActionButton(
               label: 'B',
               color: _red,
               diameter: d,
+              ghost: ghost,
               onDown: () => controller.buttonDown(PadButton.b),
               onUp: () => controller.buttonUp(PadButton.b),
             ),
           ),
           Positioned(
-            right: 8 * scale,
+            right: 4 * scale,
             bottom: 0,
             child: GlossyActionButton(
               label: 'A',
               color: _red,
               diameter: d,
+              ghost: ghost,
               onDown: () => controller.buttonDown(PadButton.a),
               onUp: () => controller.buttonUp(PadButton.a),
             ),

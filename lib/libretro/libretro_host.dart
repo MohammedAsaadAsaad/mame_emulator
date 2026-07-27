@@ -516,9 +516,14 @@ class CoreLocator {
   static String? _supportDirOverride;
   static String? _savesDirOverride;
 
-  static const helpersName = 'libhost_helpers.so';
+  /// Platform-correct helper library filename.
+  static String get helpersName {
+    if (Platform.isWindows) return 'host_helpers.dll';
+    if (Platform.isMacOS) return 'libhost_helpers.dylib';
+    return 'libhost_helpers.so';
+  }
 
-  /// Call once at startup (sets writable system/save dirs on mobile).
+  /// Call once at startup (sets writable system/save dirs on mobile / packaged desktop).
   static Future<void> init() async {
     if (Platform.isAndroid) {
       try {
@@ -536,6 +541,15 @@ class CoreLocator {
       _savesDirOverride = p.join(support.path, 'libretro_saves');
       Directory(_supportDirOverride!).createSync(recursive: true);
       Directory(_savesDirOverride!).createSync(recursive: true);
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Packaged builds have no writable project tree — use app support.
+      if (!_looksLikeRoot(_discoverRoot())) {
+        final support = await getApplicationSupportDirectory();
+        _supportDirOverride = p.join(support.path, 'libretro_system');
+        _savesDirOverride = p.join(support.path, 'libretro_saves');
+        Directory(_supportDirOverride!).createSync(recursive: true);
+        Directory(_savesDirOverride!).createSync(recursive: true);
+      }
     }
   }
 
@@ -584,16 +598,22 @@ class CoreLocator {
     return pubspec.existsSync() && cores.existsSync();
   }
 
+  /// True for a real filesystem path (not an Android soname-only string).
+  static bool _isFilesystemPath(String path) =>
+      path.contains('/') || path.contains('\\') || p.isAbsolute(path);
+
   static String get nativeDir => p.join(projectRoot, 'native');
   static String get coresDir => p.join(nativeDir, 'cores');
   static String get supportDir =>
       _supportDirOverride ?? p.join(nativeDir, 'support');
   static String get savesDir => _savesDirOverride ?? p.join(nativeDir, 'saves');
 
+  static String get _exeDir => File(Platform.resolvedExecutable).parent.path;
+
   /// Absolute path or Android soname that [DynamicLibrary.open] can load.
   static String? resolveLibraryPath(String nameOrPath) {
     // Absolute / relative filesystem path.
-    if (nameOrPath.contains('/') || nameOrPath.contains('\\')) {
+    if (_isFilesystemPath(nameOrPath) && nameOrPath != p.basename(nameOrPath)) {
       final abs = p.normalize(p.absolute(nameOrPath));
       if (File(abs).existsSync()) return abs;
     }
@@ -605,10 +625,20 @@ class CoreLocator {
         p.join(_androidNativeLibDir!, 'lib$base'),
       p.join(coresDir, base),
       p.join(nativeDir, base),
-      p.join(File(Platform.resolvedExecutable).parent.path, 'cores', base),
+      // Packaged desktop: next to the executable / in cores/
+      p.join(_exeDir, 'cores', base),
+      p.join(_exeDir, base),
       p.join(Directory.current.path, 'native', 'cores', base),
       p.join(Directory.current.path, 'native', base),
     ];
+
+    // Windows helpers may be named with or without lib prefix.
+    if (Platform.isWindows && base == 'host_helpers.dll') {
+      candidates.addAll([
+        p.join(nativeDir, 'libhost_helpers.dll'),
+        p.join(_exeDir, 'libhost_helpers.dll'),
+      ]);
+    }
 
     for (final c in candidates) {
       if (File(c).existsSync()) return c;
@@ -627,7 +657,7 @@ class CoreLocator {
   static bool libraryExists(String nameOrPath) {
     final resolved = resolveLibraryPath(nameOrPath);
     if (resolved == null) return false;
-    if (!resolved.contains('/')) {
+    if (!_isFilesystemPath(resolved)) {
       // Soname-only: assume packaged in APK (verified at DynamicLibrary.open).
       return Platform.isAndroid;
     }
@@ -646,7 +676,10 @@ class CoreLocator {
     ];
     for (final n in names) {
       final path = resolveLibraryPath(n);
-      if (path != null && (path.contains('/') ? File(path).existsSync() : Platform.isAndroid)) {
+      if (path == null) continue;
+      if (_isFilesystemPath(path)) {
+        if (File(path).existsSync()) return path;
+      } else if (Platform.isAndroid) {
         return path;
       }
     }

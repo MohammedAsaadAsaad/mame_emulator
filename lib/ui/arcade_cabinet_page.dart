@@ -1,6 +1,7 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../emulator/emulator_controller.dart';
 import 'control_panel.dart';
@@ -18,15 +19,18 @@ class ArcadeCabinetPage extends StatefulWidget {
   State<ArcadeCabinetPage> createState() => _ArcadeCabinetPageState();
 }
 
-class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
+class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
+    with WidgetsBindingObserver, WindowListener {
   late final EmulatorController _emu;
   final FocusNode _focus = FocusNode();
   bool _fsChromeVisible = true;
+  bool _windowListenerAttached = false;
 
   @override
   void initState() {
     super.initState();
     _emu = EmulatorController();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -37,10 +41,48 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
+    _attachWindowListener();
+  }
+
+  Future<void> _attachWindowListener() async {
+    try {
+      await windowManager.ensureInitialized();
+      windowManager.addListener(this);
+      _windowListenerAttached = true;
+    } catch (_) {
+      // Mobile / platforms without a desktop window.
+    }
+  }
+
+  /// Pause when the app is backgrounded or the window loses focus.
+  void _autoPauseOnBlur() {
+    if (_emu.hasGame && _emu.isRunning) {
+      _emu.pauseEmulation();
+    }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _autoPauseOnBlur();
+      case AppLifecycleState.resumed:
+        break;
+    }
+  }
+
+  @override
+  void onWindowBlur() => _autoPauseOnBlur();
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (_windowListenerAttached) {
+      windowManager.removeListener(this);
+    }
     _focus.dispose();
     _emu.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
@@ -186,7 +228,10 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
                               : landscape && showPad
                                   ? Row(
                                       children: [
-                                        LandscapeLeftControls(controller: _emu),
+                                        LandscapeLeftControls(
+                                          controller: _emu,
+                                          overlay: fs,
+                                        ),
                                         Expanded(
                                           child: ColoredBox(
                                             color: const Color(0xFF050505),
@@ -196,7 +241,10 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
                                             ),
                                           ),
                                         ),
-                                        LandscapeRightControls(controller: _emu),
+                                        LandscapeRightControls(
+                                          controller: _emu,
+                                          overlay: fs,
+                                        ),
                                       ],
                                     )
                                   : Column(
@@ -214,7 +262,11 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage> {
                                             child: _viewport(expand: fs || landscape),
                                           ),
                                         ),
-                                        if (showPad) ControlPanel(controller: _emu),
+                                        if (showPad)
+                                          ControlPanel(
+                                            controller: _emu,
+                                            ghost: fs,
+                                          ),
                                       ],
                                     ),
                         ),

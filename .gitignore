@@ -54,7 +54,13 @@ android/app/src/main/jniLibs/**/*.so
 !native/shim/
 !scripts/
 native/libhost_helpers.so
+native/host_helpers.dll
+native/libhost_helpers.dll
 native/shim/*.so
+native/*.obj
+native/*.exp
+native/*.lib
+native/*.pdb
 tool/minhost
 tool/*.o
 

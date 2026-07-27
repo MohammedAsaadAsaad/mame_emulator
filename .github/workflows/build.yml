@@ -46,12 +46,22 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Fetch Windows natives (cores + helpers)
+        shell: pwsh
+        run: .\scripts\fetch_windows_cores.ps1
       - run: flutter build windows --release
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/mame_cabinet-windows-x64.zip
+          # Sanity: cores + helpers must be inside the zip
+          $zip = Get-ChildItem dist\mame_cabinet-windows-x64.zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $entries = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries | ForEach-Object { $_.FullName }
+          if (-not ($entries | Where-Object { $_ -match 'cores/.*\.dll$' })) { throw 'ZIP missing cores/*.dll' }
+          if (-not ($entries | Where-Object { $_ -match 'host_helpers\.dll$' })) { throw 'ZIP missing host_helpers.dll' }
+          Write-Host 'Package contains cores + host_helpers.dll'
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
