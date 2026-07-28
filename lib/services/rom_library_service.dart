@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../libretro/libretro_host.dart';
 import '../models/library_models.dart';
+import 'system_bios_service.dart';
 
 /// Persistent ROM library that indexes games at their **original paths**
 /// (no copy into app storage). Save states / thumbnails live under app support.
@@ -47,7 +48,6 @@ class RomLibraryService {
     for (final c in abs.codeUnits) {
       hash = 0x1fffffff & (hash + c);
       hash = 0x1fffffff & (hash + ((0x0007ffff & hash) << 10));
-      hash ^= hash >> 6;
     }
     hash = 0x1fffffff & (hash + ((0x03ffffff & hash) << 3));
     hash ^= hash >> 11;
@@ -83,6 +83,10 @@ class RomLibraryService {
     for (final f in dir.listSync().whereType<File>()) {
       final lower = f.path.toLowerCase();
       if (!lower.endsWith('.zip') && !lower.endsWith('.7z')) continue;
+      if (SystemBiosService.isBiosArchive(f.path)) {
+        await SystemBiosService.installBiosArchive(f.path);
+        continue;
+      }
       final abs = p.normalize(p.absolute(f.path));
       games.add(LibraryGame(
         id: idForPath(abs),
@@ -101,11 +105,23 @@ class RomLibraryService {
     );
   }
 
+  /// Persist an updated library list (e.g. after metadata enrichment).
+  Future<void> saveAll(List<LibraryGame> games) => _save(games);
+
   /// Index a ROM at its current location — does **not** copy the file.
   Future<LibraryGame> importPath(String path) async {
     final abs = p.normalize(p.absolute(path));
     if (!File(abs).existsSync()) {
       throw StateError('ROM not found: $abs');
+    }
+
+    if (SystemBiosService.isBiosArchive(abs)) {
+      await SystemBiosService.installBiosArchive(abs);
+      return LibraryGame(
+        id: idForPath(abs),
+        title: p.basenameWithoutExtension(abs),
+        path: abs,
+      );
     }
 
     final games = await loadAll();
@@ -126,6 +142,7 @@ class RomLibraryService {
   Future<int> scanFolder(String folderPath) async {
     final dir = Directory(folderPath);
     if (!dir.existsSync()) return 0;
+    await SystemBiosService.provisionFromDirs([folderPath]);
     final games = await loadAll();
     final known = games.map((g) => p.normalize(g.path)).toSet();
     var added = 0;
@@ -133,6 +150,7 @@ class RomLibraryService {
       if (entity is! File) continue;
       final lower = entity.path.toLowerCase();
       if (!lower.endsWith('.zip') && !lower.endsWith('.7z')) continue;
+      if (SystemBiosService.isBiosArchive(entity.path)) continue;
       final abs = p.normalize(p.absolute(entity.path));
       if (known.contains(abs)) continue;
       games.add(LibraryGame(

@@ -79,7 +79,11 @@ class _SaveSlotsBody extends StatelessWidget {
                             child: info.thumbnailPath != null
                                 ? Image.file(
                                     File(info.thumbnailPath!),
+                                    key: ValueKey(
+                                      '${info.thumbnailPath}_${info.thumbnailRevision ?? 0}',
+                                    ),
                                     fit: BoxFit.cover,
+                                    gaplessPlayback: false,
                                     errorBuilder: (_, _, _) => _slotBadge(slot, active),
                                   )
                                 : _slotBadge(slot, active),

@@ -70,6 +70,12 @@ roms/*.zip
 roms/*.7z
 !roms/README.md
 
+# Personal BIOS dumps (bundle locally under assets/bios/ — do not commit)
+assets/bios/*.zip
+assets/bios/*.7z
+assets/bios/neogeo.zip.*
+!assets/bios/README.md
+
 # Local secrets / keystores
 *.jks
 *.keystore

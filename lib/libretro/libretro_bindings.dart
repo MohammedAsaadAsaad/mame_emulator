@@ -50,7 +50,7 @@ const int RETRO_ENVIRONMENT_SET_CONTROLLER_INFO = 35;
 const int RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS = 42;
 const int RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE = 47;
 const int RETRO_ENVIRONMENT_SET_GEOMETRY = 37;
-const int RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO = 36;
+const int RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO = 32;
 const int RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL = 8;
 const int RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE = 23;
 const int RETRO_ENVIRONMENT_GET_FASTFORWARDING = 64;
@@ -115,6 +115,12 @@ final class RetroVariable extends Struct {
 final class RetroLogCallback extends Struct {
   /// Points at a C `void (*)(int, const char *, ...)` — provided by host_helpers.
   external Pointer<Void> log;
+}
+
+final class RetroMessage extends Struct {
+  external Pointer<Utf8> msg;
+  @Uint32()
+  external int frames;
 }
 
 typedef RetroEnvironmentNative = Bool Function(Uint32 cmd, Pointer<Void> data);

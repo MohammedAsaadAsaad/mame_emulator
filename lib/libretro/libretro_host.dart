@@ -32,7 +32,8 @@ class LibretroHost extends ChangeNotifier {
   Pointer<Void>? _logFn;
   DynamicLibrary? _helpers;
 
-  int _pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
+  /// Libretro default until the core calls SET_PIXEL_FORMAT.
+  int _pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
   final Map<int, bool> _buttons = {};
   bool _running = false;
   bool _gameLoaded = false;
@@ -40,6 +41,12 @@ class LibretroHost extends ChangeNotifier {
   String? coreName;
   String? romPath;
   String status = 'No core loaded';
+  /// Last on-screen message from the core (SET_MESSAGE), e.g. "FBNeo Error".
+  String? coreMessage;
+
+  /// Host-provided libretro variables (GET_VARIABLE).
+  final Map<String, String> coreOptions = {};
+  final List<Pointer<Utf8>> _optionValuePtrs = [];
 
   ui.Image? frame;
   int frameWidth = 0;
@@ -59,6 +66,7 @@ class LibretroHost extends ChangeNotifier {
 
   Future<void> loadCore(String corePath) async {
     await unload();
+    _pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
     final resolved = CoreLocator.resolveLibraryPath(corePath);
     if (resolved == null) {
       status = 'Core not found: $corePath';
@@ -170,7 +178,10 @@ class LibretroHost extends ChangeNotifier {
 
     if (!ok) {
       _freeGamePath();
-      status = 'Failed to load ROM (bad set / missing files?)';
+      final core = coreName ?? 'core';
+      status =
+          'Failed to load ROM with $core (wrong DAT for this core, '
+          'missing parent ZIP beside the clone, or BIOS in ${CoreLocator.supportDir}?)';
       notifyListeners();
       throw StateError(status);
     }
@@ -304,6 +315,13 @@ class LibretroHost extends ChangeNotifier {
     }
     frame?.dispose();
     frame = null;
+    _rgba = null;
+    _pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
+    for (final ptr in _optionValuePtrs) {
+      calloc.free(ptr);
+    }
+    _optionValuePtrs.clear();
+    coreMessage = null;
     _b = null;
     _lib = null;
     _helpers = null;
@@ -356,7 +374,19 @@ class LibretroHost extends ChangeNotifier {
         return false;
       case RETRO_ENVIRONMENT_GET_VARIABLE:
         if (data != nullptr) {
-          data.cast<RetroVariable>().ref.value = nullptr;
+          final variable = data.cast<RetroVariable>();
+          final keyPtr = variable.ref.key;
+          if (keyPtr != nullptr) {
+            final key = keyPtr.toDartString();
+            final value = coreOptions[key];
+            if (value != null) {
+              final ptr = value.toNativeUtf8();
+              _optionValuePtrs.add(ptr);
+              variable.ref.value = ptr;
+              return true;
+            }
+          }
+          variable.ref.value = nullptr;
         }
         return true;
       case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
@@ -371,12 +401,21 @@ class LibretroHost extends ChangeNotifier {
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
       case 42: // SET_SUPPORT_ACHIEVEMENTS (also used with experimental bit)
       case RETRO_ENVIRONMENT_SET_GEOMETRY:
-      case 32: // SET_SYSTEM_AV_INFO (correct libretro id)
-      case RETRO_ENVIRONMENT_SET_MESSAGE:
+      case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
+        return true;
+      case RETRO_ENVIRONMENT_SET_MESSAGE:
+        if (data != nullptr) {
+          final message = data.cast<RetroMessage>().ref;
+          if (message.msg != nullptr) {
+            coreMessage = message.msg.toDartString();
+            status = coreMessage!;
+            notifyListeners();
+          }
+        }
         return true;
       case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
         if (data != nullptr) {
@@ -551,6 +590,13 @@ class CoreLocator {
         Directory(_savesDirOverride!).createSync(recursive: true);
       }
     }
+
+    // FBNeo searches system_dir, system_dir/fbneo, system_dir/fbneo/arcade.
+    final sys = supportDir;
+    Directory(sys).createSync(recursive: true);
+    Directory(p.join(sys, 'fbneo')).createSync(recursive: true);
+    Directory(p.join(sys, 'fbneo', 'arcade')).createSync(recursive: true);
+    Directory(savesDir).createSync(recursive: true);
   }
 
   static String get projectRoot {
@@ -701,13 +747,59 @@ class CoreLocator {
       _core('mame2003_plus_libretro.dylib') ??
       _core('mame2003_plus_libretro.dll');
 
-  /// Prefer MAME2003+ (smaller / broader). FBNeo for CPS sets like dino.
-  static String? bestArcadeCore({String? romBasename}) {
+  /// Stem of a ROM zip name (`punisher.zip` → `punisher`).
+  static String romStem(String? romBasename) {
     final name = (romBasename ?? '').toLowerCase();
-    if (name.startsWith('dino') || name.contains('cadillacs')) {
+    return name.replaceAll(RegExp(r'\.(zip|7z)$'), '');
+  }
+
+  /// Modern arcade packs (FBNeo / current MAME DAT) should use FBNeo.
+  /// Only a few orphan sets are happier on MAME2003+.
+  static bool prefersFbneo(String? romBasename) {
+    final stem = romStem(romBasename);
+    if (stem.isEmpty) return true;
+    // Public-domain / early-MAME sets that FBNeo does not cover well.
+    const mame2003Only = {
+      'gridlee',
+      'circus',
+      'ripoff',
+      'spacewar',
+      'barrier',
+      'speedfrk',
+      'starcas',
+      'tailg',
+      'warrior',
+      'armora',
+      'solarq',
+      'boxingb',
+      'wotw',
+      'demo',
+    };
+    if (mame2003Only.contains(stem)) return false;
+    return true;
+  }
+
+  /// Prefer FBNeo for modern Capcom/Neo Geo/etc. packs; MAME2003+ for orphans.
+  static String? bestArcadeCore({String? romBasename}) {
+    if (prefersFbneo(romBasename)) {
       return fbneo() ?? mame2003Plus();
     }
     return mame2003Plus() ?? fbneo();
+  }
+
+  /// The other arcade core, for automatic retry after a failed load.
+  static String? alternateArcadeCore({String? romBasename}) {
+    final primary = bestArcadeCore(romBasename: romBasename);
+    if (primary == null) return null;
+    final fb = fbneo();
+    final mame = mame2003Plus();
+    if (fb != null && primary == fb) return mame;
+    if (mame != null && primary == mame) return fb;
+    // Path equality can differ; compare basenames.
+    final primaryBase = p.basename(primary);
+    if (fb != null && p.basename(fb) != primaryBase) return fb;
+    if (mame != null && p.basename(mame) != primaryBase) return mame;
+    return null;
   }
 
   static String diagnose() {

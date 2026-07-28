@@ -37,6 +37,8 @@ flutter pub get
 flutter run -d linux
 ```
 
+CI packages `cores/*.so` and `libhost_helpers.so` next to the exe inside the tarball.
+
 ### Windows
 
 ```powershell
@@ -56,7 +58,16 @@ flutter build apk --release --split-per-abi
 ```
 
 Point the app at your ROM folders via **Games → Scan**, **Import**, or drag-drop.  
+Use **FBNeo-matched** arcade sets for Capcom / Neo Geo / most modern packs; MAME2003+ only for a few early sets (e.g. `gridlee`).  
+Neo Geo games need `neogeo.zip` — for personal builds place it in `assets/bios/` (gitignored); the app copies it into the system dir at startup on Linux / Windows / Android.  
+The library resolves **real game titles** from the FBNeo gamelist and caches **box art** silently.  
 Public-domain test ROM notes live in `roms/README.md` (`roms/*.zip` is gitignored).
+
+### BIOS archives vs cores
+
+**Cores** = emulators (`fbneo_libretro`, `mame2003_plus_libretro`).  
+**BIOS archives** = support zips some games need (`neogeo.zip`, `pgm.zip`, `cps3.zip`, …) — not playable.  
+Put personal BIOS dumps in `assets/bios/` (see `assets/bios/README.md`); they are auto-installed at launch.
 
 ## Default keys
 

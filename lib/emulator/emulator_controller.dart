@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +18,9 @@ import '../libretro/libretro_bindings.dart';
 import '../libretro/libretro_host.dart';
 import '../models/image_enhancement_mode.dart';
 import '../models/library_models.dart';
+import '../services/game_metadata_service.dart';
 import '../services/rom_library_service.dart';
+import '../services/system_bios_service.dart';
 import '../ui/widgets/enhance_shader.dart';
 
 enum PadButton { a, b, c, d }
@@ -32,6 +35,7 @@ class EmulatorController extends ChangeNotifier {
   final LibretroHost _host = LibretroHost();
   final KeyBindingController keyBindings = KeyBindingController();
   final RomLibraryService library = RomLibraryService();
+  final GameMetadataService metadata = GameMetadataService();
   final ArcadeAudio audio = ArcadeAudio();
 
   String toast = '';
@@ -75,6 +79,10 @@ class EmulatorController extends ChangeNotifier {
 
   Future<void> init() async {
     await CoreLocator.init();
+    final biosCount = await SystemBiosService.installBundledAssets();
+    if (biosCount > 0) {
+      debugPrint('Installed $biosCount BIOS archive(s) from assets/bios/');
+    }
     await keyBindings.load();
     await _loadSpeed();
     await _loadShaderPrefs();
@@ -85,6 +93,7 @@ class EmulatorController extends ChangeNotifier {
     unawaited(EnhanceShader.warmUp());
     games = await library.loadAll();
     _clampMenuIndex();
+    unawaited(_enrichLibraryMetadata());
     // Do not block UI on opening a 40–70MB .so — load core when a ROM is chosen.
     final core = CoreLocator.bestArcadeCore();
     if (core == null || !CoreLocator.libraryExists(CoreLocator.helpersName)) {
@@ -203,7 +212,7 @@ class EmulatorController extends ChangeNotifier {
       throw StateError(msg);
     }
 
-    final wantFbneo = (basename ?? '').toLowerCase().startsWith('dino');
+    final wantFbneo = CoreLocator.prefersFbneo(basename);
     final haveFbneo = (_host.coreName ?? '').toLowerCase().contains('neo');
     if (_host.coreName != null && wantFbneo == haveFbneo) return;
 
@@ -235,12 +244,58 @@ class EmulatorController extends ChangeNotifier {
       return;
     }
 
+    if (SystemBiosService.isBiosArchive(path)) {
+      await SystemBiosService.installBiosArchive(path);
+      _host.status =
+          'Installed ${p.basename(path)} → ${CoreLocator.supportDir}';
+      _flash('BIOS INSTALLED');
+      notifyListeners();
+      return;
+    }
+
     booting = true;
     notifyListeners();
     try {
       final game = await library.importPath(path);
+      final libraryDirs = (await library.loadAll())
+          .map((g) => p.dirname(g.path))
+          .toSet();
+      var bios = await SystemBiosService.ensureForRom(
+        game.path,
+        extraDirs: libraryDirs,
+      );
+      // Bundled assets/bios/ is installed at startup; also re-try in case of hot reload.
+      if (bios.needsNeogeo && !bios.hasNeogeo) {
+        await SystemBiosService.installBundledAssets();
+        bios = await SystemBiosService.ensureForRom(
+          game.path,
+          extraDirs: libraryDirs,
+        );
+      }
+      if (bios.needsNeogeo && !bios.hasNeogeo) {
+        _host.status = SystemBiosService.missingNeogeoMessage(bios);
+        _flash('NEED neogeo.zip IN assets/bios');
+        notifyListeners();
+        return;
+      }
+      if (bios.biosArchivesInstalled > 0) {
+        _flash('BIOS READY');
+      }
       await ensureCore(romPath: game.path);
-      await _host.loadGame(game.path);
+      try {
+        await _host.loadGame(game.path);
+      } catch (first) {
+        final alt = CoreLocator.alternateArcadeCore(
+          romBasename: p.basename(game.path),
+        );
+        if (alt == null) rethrow;
+        debugPrint('Primary core failed ($first); retrying alternate…');
+        _flash('RETRY OTHER CORE');
+        notifyListeners();
+        await _host.loadCore(alt);
+        await _host.loadGame(game.path);
+        _flash('CORE: ${_host.coreName}');
+      }
       _host.start(speed: emulationSpeed);
       await library.markPlayed(game);
       games = await library.loadAll();
@@ -264,6 +319,16 @@ class EmulatorController extends ChangeNotifier {
     games = await library.loadAll();
     _clampMenuIndex();
     notifyListeners();
+    unawaited(_enrichLibraryMetadata());
+  }
+
+  Future<void> _enrichLibraryMetadata() async {
+    if (games.isEmpty) return;
+    await metadata.enrichGames(
+      games,
+      persist: library.saveAll,
+      onChanged: notifyListeners,
+    );
   }
 
   void _clampMenuIndex() {
@@ -317,13 +382,20 @@ class EmulatorController extends ChangeNotifier {
     if (first != null) await loadRom(first);
   }
 
-  /// Pick a folder and index all .zip/.7z ROMs in place (no copy).
+  /// Scan a folder and index all .zip/.7z ROMs in place (no copy).
   Future<void> scanFolderWithPicker() async {
     final path = await FilePicker.getDirectoryPath(dialogTitle: 'Select ROM folder');
     if (path == null) return;
     final added = await library.scanFolder(path);
+    final bios = await SystemBiosService.provisionFromDirs([path]);
     games = await library.loadAll();
-    _flash(added > 0 ? 'INDEXED $added ROMS' : 'NO NEW ROMS');
+    if (bios > 0 && added > 0) {
+      _flash('INDEXED $added + BIOS');
+    } else if (bios > 0) {
+      _flash('BIOS INSTALLED');
+    } else {
+      _flash(added > 0 ? 'INDEXED $added ROMS' : 'NO NEW ROMS');
+    }
     notifyListeners();
   }
 
@@ -496,6 +568,9 @@ class EmulatorController extends ChangeNotifier {
         savedAt: at,
         romName: name,
         thumbnailPath: await thumb.exists() ? thumb.path : null,
+        thumbnailRevision: await thumb.exists()
+            ? (await thumb.lastModified()).millisecondsSinceEpoch
+            : at?.millisecondsSinceEpoch,
       ));
     }
     saveSlots = slots;
@@ -525,7 +600,11 @@ class EmulatorController extends ChangeNotifier {
         'romName': p.basename(_host.romPath!),
         'romPath': _host.romPath,
       }));
-      await _captureThumbnail(File(p.join(thumbs.path, '${id}_slot_$s.png')));
+      final thumbFile = File(p.join(thumbs.path, '${id}_slot_$s.png'));
+      // Drop Flutter's Image.file decode cache before overwrite.
+      await FileImage(thumbFile).evict();
+      await _captureThumbnail(thumbFile);
+      await FileImage(thumbFile).evict();
       saveSlot = s;
       await refreshSaveSlots();
       _flash('STATE SAVED → SLOT $s');

@@ -127,7 +127,8 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
     COMPONENT Runtime)
 endif()
 
-# Libretro cores + host helpers (fetch with scripts/fetch_cores.sh).
+# Libretro cores + host helpers (fetch with scripts/fetch_cores.sh + build_helpers.sh).
+# CoreLocator looks next to the executable (not under lib/), matching Windows layout.
 set(MAME_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../native")
 set(MAME_CORES_DIR "${MAME_NATIVE_DIR}/cores")
 if(EXISTS "${MAME_CORES_DIR}")
