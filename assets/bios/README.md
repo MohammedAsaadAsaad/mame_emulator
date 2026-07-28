@@ -1,6 +1,8 @@
 # Bundled BIOS (personal use)
 
-Place FBNeo/MAME **BIOS archives** here (not game ROMs, not libretro cores):
+Place FBNeo/MAME **BIOS / support files** here (not game ROMs, not libretro cores).
+On every launch (and before each ROM load) the app copies them into the libretro
+system directory automatically — no picker.
 
 | File | Used for |
 |------|----------|
@@ -10,6 +12,7 @@ Place FBNeo/MAME **BIOS archives** here (not game ROMs, not libretro cores):
 | `pgm.zip` | PolyGame Master |
 | `cps3.zip` | Capcom CPS-3 |
 | `qsound.zip` | Some CPS boards (optional) |
+| `{game}.key` | CPS-2 encryption keys (e.g. `armwar.key`) — copied beside the ROM |
 
 ## Neo Geo / FBNeo
 
@@ -22,11 +25,14 @@ Current FBNeo requires these dumps **inside** `neogeo.zip` (exact CRC):
 You can drop several `neogeo.zip` / `neogeo.zip.<hash>` files here. At startup the
 app scores them and installs the best match as `neogeo.zip` in the system dir.
 
-On startup the app copies selected BIOS into the libretro system directory
-(Linux / Windows / Android). No UI picker.
+## CPS-2 keys (Armored Warriors, etc.)
 
-These zips are gitignored so they are not committed by accident.
+Many Capcom CPS-2 games need a separate `{romname}.key` file (e.g. `armwar.key`).
+Put that file here; the app installs it into the system dir and copies it **next to
+the game ZIP** before load. A game ZIP alone without its `.key` will show FBNeo’s
+“romset is missing files” dialog — that is not a BIOS wiring bug.
 
-**Android / GitHub APK:** CI builds do **not** include `neogeo.zip` (gitignored).
-Either rebuild the APK on your PC with this folder present, or on first Metal Slug
-launch pick `neogeo.zip` once — it is saved into app storage for later.
+These files are gitignored so they are not committed by accident.
+
+**Important:** rebuild the app after adding files here. The player never picks
+BIOS — choosing a game loads support files from assets automatically.

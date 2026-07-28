@@ -297,48 +297,82 @@ class SystemBiosService {
         data.lengthInBytes,
       );
 
-  /// Install BIOS zips the developer placed under `assets/bios/` (personal use).
+  static Future<Uint8List?> _loadAssetBytes(String assetKey) async {
+    try {
+      final data = await rootBundle.load(assetKey);
+      final bytes = _bytesFromAsset(data);
+      return bytes.isEmpty ? null : bytes;
+    } catch (e) {
+      debugPrint('BIOS asset miss $assetKey: $e');
+      return null;
+    }
+  }
+
+  /// Write a support file (BIOS zip / CPS `.key`) into all FBNeo search dirs.
+  static Future<void> installSupportFile(
+    String fileName,
+    List<int> bytes, {
+    bool force = false,
+  }) async {
+    await ensureSystemDirs();
+    final base = p.basename(fileName).toLowerCase();
+    final targets = <String>[
+      p.join(_systemDir, base),
+      p.join(_fbneoDir, base),
+      p.join(_fbneoDir, 'arcade', base),
+    ];
+    for (final t in targets) {
+      final dest = File(t);
+      if (!force && dest.existsSync() && dest.lengthSync() == bytes.length) {
+        continue;
+      }
+      await dest.writeAsBytes(bytes, flush: true);
+    }
+  }
+
+  /// Install BIOS zips / keys the developer placed under `assets/bios/`.
   /// Among multiple `neogeo.zip*` files, CRC-picks the best FBNeo match.
   ///
   /// Note: CI APKs usually lack these files (gitignored). Local `flutter build apk`
-  /// with zips present in `assets/bios/` bundles them into the APK.
+  /// with files present in `assets/bios/` bundles them into the APK.
   static Future<int> installBundledAssets() async {
     var installed = 0;
+    await ensureSystemDirs();
 
-    // --- Neo Geo: pick best among neogeo.zip / neogeo.zip.* ---
-    final neoCandidates = <String, Uint8List>{};
+    final assetKeys = <String>{};
 
-    // Canonical paths first (more reliable than manifest-only on Android).
+    // Canonical Neo Geo paths first (more reliable than manifest-only on Android).
     for (final key in [
       '${assetBiosPrefix}neogeo.zip',
       '${assetBiosPrefix}neogeo.7z',
     ]) {
-      try {
-        final data = await rootBundle.load(key);
-        final bytes = _bytesFromAsset(data);
-        if (bytes.isNotEmpty) neoCandidates[key] = bytes;
-      } catch (e) {
-        debugPrint('BIOS asset miss $key: $e');
-      }
+      assetKeys.add(key);
     }
 
-    // Hashed copies: assets/bios/neogeo.zip.<hash>
+    // Known archives by exact name.
+    for (final name in biosArchives) {
+      assetKeys.add('$assetBiosPrefix$name');
+    }
+
+    // Full folder scan via AssetManifest (hashed neogeo.zip.*, *.key, extras).
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       for (final key in manifest.listAssets()) {
         if (!key.startsWith(assetBiosPrefix)) continue;
-        if (!_isNeogeoAssetKey(key)) continue;
-        if (neoCandidates.containsKey(key)) continue;
-        try {
-          final data = await rootBundle.load(key);
-          final bytes = _bytesFromAsset(data);
-          if (bytes.isNotEmpty) neoCandidates[key] = bytes;
-        } catch (e) {
-          debugPrint('BIOS asset miss $key: $e');
-        }
+        final base = p.basename(key).toLowerCase();
+        if (base == 'readme.md') continue;
+        assetKeys.add(key);
       }
     } catch (e) {
       debugPrint('AssetManifest bios scan failed: $e');
+    }
+
+    // --- Neo Geo: pick best among neogeo.zip / neogeo.zip.* ---
+    final neoCandidates = <String, Uint8List>{};
+    for (final key in assetKeys) {
+      if (!_isNeogeoAssetKey(key)) continue;
+      final bytes = await _loadAssetBytes(key);
+      if (bytes != null) neoCandidates[key] = bytes;
     }
 
     debugPrint('Neo Geo asset candidates: ${neoCandidates.keys.toList()}');
@@ -372,22 +406,67 @@ class SystemBiosService {
       }
     }
 
-    // --- Other BIOS archives (exact names only) ---
-    for (final name in biosArchives) {
-      if (name.startsWith('neogeo.')) continue; // handled above
-      final assetPath = '$assetBiosPrefix$name';
+    // --- Other archives + loose CPS keys / extras ---
+    for (final key in assetKeys) {
+      if (_isNeogeoAssetKey(key)) continue; // handled above
+      final base = p.basename(key).toLowerCase();
+      if (base == 'readme.md') continue;
+      final isZip = base.endsWith('.zip') || base.endsWith('.7z');
+      final isKey = base.endsWith('.key');
+      if (!isZip && !isKey) continue;
+
+      final bytes = await _loadAssetBytes(key);
+      if (bytes == null) continue;
+
+      if (isKey) {
+        await installSupportFile(base, bytes);
+      } else {
+        await installBiosBytes(base, bytes);
+      }
+      installed++;
+      debugPrint('Support from assets: $base → $_systemDir');
+    }
+
+    return installed;
+  }
+
+  /// Ensure `{romStem}.key` is beside the ROM (CPS-2 / similar).
+  ///
+  /// Order: already beside ROM → system dirs → bundled `assets/bios/{stem}.key`.
+  static Future<bool> ensureKeyBesideRom(String romPath) async {
+    final stem = CoreLocator.romStem(p.basename(romPath));
+    if (stem.isEmpty) return false;
+    final keyName = '$stem.key';
+    final romDir = p.dirname(p.normalize(p.absolute(romPath)));
+    final beside = File(p.join(romDir, keyName));
+    if (beside.existsSync()) return true;
+
+    // Prefer a copy already installed into the system dir.
+    for (final dir in [_systemDir, _fbneoDir, p.join(_fbneoDir, 'arcade')]) {
+      final src = File(p.join(dir, keyName));
+      if (!src.existsSync()) continue;
       try {
-        final data = await rootBundle.load(assetPath);
-        final bytes = _bytesFromAsset(data);
-        if (bytes.isEmpty) continue;
-        await installBiosBytes(name, bytes);
-        installed++;
-        debugPrint('BIOS from assets: $name → $_systemDir');
-      } catch (_) {
-        // Not bundled in this build — skip.
+        await src.copy(beside.path);
+        debugPrint('Copied $keyName → $romDir');
+        return true;
+      } catch (e) {
+        debugPrint('Could not copy $keyName beside ROM: $e');
       }
     }
-    return installed;
+
+    // On-demand from assets/bios/ (in case startup install missed it).
+    final bytes = await _loadAssetBytes('$assetBiosPrefix$keyName');
+    if (bytes != null) {
+      await installSupportFile(keyName, bytes, force: true);
+      try {
+        await beside.writeAsBytes(bytes, flush: true);
+        debugPrint('KEY from assets: $keyName → $romDir');
+        return true;
+      } catch (e) {
+        debugPrint('Could not write $keyName beside ROM: $e');
+      }
+    }
+    return false;
   }
 
   /// Copy [source] into FBNeo system search paths (idempotent).
@@ -462,24 +541,10 @@ class SystemBiosService {
   }
 
   static String missingNeogeoMessage(BiosProvisionResult r) {
-    final buf = StringBuffer()
-      ..writeln('Neo Geo BIOS missing (neogeo.zip).')
-      ..writeln('Checked:')
-      ..writeln('  ${r.romDir}')
-      ..writeln('  ${r.systemDir}');
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      buf.writeln(
-        'GitHub APK builds omit personal BIOS (gitignored).\n'
-        'Import neogeo.zip once, or rebuild the APK locally '
-        'with assets/bios/neogeo.zip present.',
-      );
-    } else {
-      buf.writeln(
-        'Put neogeo.zip in assets/bios/ then rebuild, '
-        'or place it next to your ROMs.',
-      );
-    }
-    return buf.toString().trim();
+    // Keep this short — players should never need to know about BIOS files.
+    // Developers: put a valid neogeo.zip in assets/bios/ and rebuild.
+    return 'This game cannot start right now.\n'
+        'Please update the app and try again.';
   }
 }
 

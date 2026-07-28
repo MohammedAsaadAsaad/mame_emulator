@@ -261,63 +261,31 @@ class EmulatorController extends ChangeNotifier {
       final libraryDirs = (await library.loadAll())
           .map((g) => p.dirname(g.path))
           .toSet();
-      var bios = await SystemBiosService.ensureForRom(
+      // Install personal assets/bios/ silently (Neo Geo, CPS keys, …).
+      // Player never picks BIOS — only chooses a game.
+      await SystemBiosService.installBundledAssets();
+      final bios = await SystemBiosService.ensureForRom(
         game.path,
         extraDirs: libraryDirs,
       );
-      // Bundled assets/bios/ is installed at startup; also re-try in case of hot reload.
       if (bios.needsNeogeo && !bios.hasNeogeo) {
-        await SystemBiosService.installBundledAssets();
-        bios = await SystemBiosService.ensureForRom(
-          game.path,
-          extraDirs: libraryDirs,
-        );
-      }
-      // Mobile / CI APKs usually omit gitignored BIOS — import once and cache.
-      if (bios.needsNeogeo && !bios.hasNeogeo && isMobilePlatform) {
-        _flash('SELECT neogeo.zip');
-        _host.status =
-            'Neo Geo BIOS required once.\n'
-            'Pick neogeo.zip — it will be saved for next launches.';
-        notifyListeners();
-        booting = false;
-        notifyListeners();
-        final picked = await FilePicker.pickFiles(
-          dialogTitle: 'Select Neo Geo BIOS (neogeo.zip)',
-          type: FileType.custom,
-          allowedExtensions: const ['zip', '7z'],
-        );
-        booting = true;
-        notifyListeners();
-        final pathPicked = picked?.files.singleOrNull?.path;
-        if (pathPicked != null) {
-          final base = p.basename(pathPicked).toLowerCase();
-          if (base == 'neogeo.zip' ||
-              base == 'neogeo.7z' ||
-              base.startsWith('neogeo.zip.')) {
-            await SystemBiosService.installBiosArchive(pathPicked);
-            bios = await SystemBiosService.ensureForRom(
-              game.path,
-              extraDirs: libraryDirs,
-            );
-            if (bios.hasNeogeo) {
-              _flash('BIOS INSTALLED');
-            }
-          } else {
-            _flash('NEED FILE NAMED neogeo.zip');
-          }
-        }
-      }
-      if (bios.needsNeogeo && !bios.hasNeogeo) {
+        // Bundled BIOS missing from this build — do not open a file picker.
         _host.status = SystemBiosService.missingNeogeoMessage(bios);
-        _flash(
-          isMobilePlatform ? 'NEED neogeo.zip (IMPORT)' : 'NEED neogeo.zip IN assets/bios',
-        );
+        _flash('CANNOT START');
         notifyListeners();
         return;
       }
       if (bios.biosArchivesInstalled > 0) {
         _flash('BIOS READY');
+      }
+      // CPS-2 etc.: place `{game}.key` beside the ROM from system dir / assets/bios/.
+      final hadKey = await SystemBiosService.ensureKeyBesideRom(game.path);
+      if (!hadKey) {
+        final stem = CoreLocator.romStem(p.basename(game.path));
+        debugPrint(
+          'No $stem.key beside ROM or in assets/bios/ — '
+          'CPS-2 sets need this file (FBNeo will error if required).',
+        );
       }
       await ensureCore(romPath: game.path);
       try {
