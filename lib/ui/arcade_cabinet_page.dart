@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 import '../emulator/emulator_controller.dart';
 import '../utils/platform_info.dart';
 import 'control_panel.dart';
+import 'sheets/cheats_sheet.dart';
 import 'sheets/game_library_sheet.dart';
 import 'sheets/key_bindings_sheet.dart';
 import 'sheets/save_slots_sheet.dart';
@@ -114,6 +115,7 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
   void _openLibrary() => GameLibrarySheet.show(context, _emu).then((_) => _focus.requestFocus());
   void _openSlots() => SaveSlotsSheet.show(context, _emu).then((_) => _focus.requestFocus());
   void _openKeys() => KeyBindingsSheet.show(context, _emu).then((_) => _focus.requestFocus());
+  void _openCheats() => CheatsSheet.show(context, _emu).then((_) => _focus.requestFocus());
   void _openSpeed() => SpeedSheet.show(context, _emu).then((_) => _focus.requestFocus());
   void _openSettings() => SettingsSheet.show(
         context,
@@ -122,6 +124,7 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
         onKeys: _openKeys,
         onSlots: _openSlots,
         onSpeed: _openSpeed,
+        onCheats: _openCheats,
       ).then((_) => _focus.requestFocus());
 
   Future<void> _import() async {
@@ -218,6 +221,7 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                             onImport: _import,
                             onSlots: _openSlots,
                             onKeys: _openKeys,
+                            onCheats: _openCheats,
                             onSpeed: _openSpeed,
                             onSettings: _openSettings,
                           ),
@@ -287,6 +291,7 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                           onImport: _import,
                           onSlots: _openSlots,
                           onKeys: _openKeys,
+                          onCheats: _openCheats,
                           onSpeed: _openSpeed,
                           onSettings: _openSettings,
                         ),

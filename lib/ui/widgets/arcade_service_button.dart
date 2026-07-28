@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Classic arcade COIN / START button — metal bezel, domed face, simple press.
+/// Classic arcade COIN / START — metal bezel with a slightly **concave** face.
 class ArcadeServiceButton extends StatefulWidget {
   const ArcadeServiceButton({
     super.key,
@@ -24,13 +24,7 @@ class _ArcadeServiceButtonState extends State<ArcadeServiceButton> {
 
   @override
   Widget build(BuildContext context) {
-    final face = Color.lerp(
-      widget.faceColor,
-      const Color(0xFF888888),
-      _down ? 0.35 : 0,
-    )!;
     final d = widget.diameter;
-    final border = (d * 0.067).clamp(2.0, 3.5);
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _down = true),
@@ -42,53 +36,14 @@ class _ArcadeServiceButtonState extends State<ArcadeServiceButton> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 55),
+          SizedBox(
             width: d,
             height: d,
-            transform: Matrix4.translationValues(0, _down ? 1.5 : 0, 0),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                center: const Alignment(-0.35, -0.45),
-                radius: 0.95,
-                colors: _down
-                    ? [
-                        Color.lerp(face, Colors.black, 0.25)!,
-                        face,
-                        Color.lerp(face, Colors.black, 0.4)!,
-                      ]
-                    : [
-                        Colors.white.withValues(alpha: 0.55),
-                        face,
-                        Color.lerp(face, Colors.black, 0.28)!,
-                      ],
-                stops: const [0.0, 0.45, 1.0],
+            child: CustomPaint(
+              painter: _ConcaveServicePainter(
+                faceColor: widget.faceColor,
+                pressed: _down,
               ),
-              border: Border.all(
-                color: const Color(0xFF2A2A2A),
-                width: border,
-              ),
-              boxShadow: _down
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x88000000),
-                        blurRadius: 2,
-                        offset: Offset(0, 1),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        blurRadius: 5,
-                        offset: const Offset(0, 3),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        blurRadius: 1,
-                        offset: const Offset(0, -1),
-                      ),
-                    ],
             ),
           ),
           SizedBox(height: d < 40 ? 4 : 6),
@@ -105,4 +60,100 @@ class _ArcadeServiceButtonState extends State<ArcadeServiceButton> {
       ),
     );
   }
+}
+
+class _ConcaveServicePainter extends CustomPainter {
+  _ConcaveServicePainter({
+    required this.faceColor,
+    required this.pressed,
+  });
+
+  final Color faceColor;
+  final bool pressed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2;
+    final depth = pressed ? 1.8 : 0.0;
+    final border = (r * 0.13).clamp(2.0, 3.5);
+
+    canvas.drawCircle(
+      c.translate(0, pressed ? 1.5 : 3.5),
+      r * 0.9,
+      Paint()..color = const Color(0x88000000),
+    );
+
+    // Dark metal housing ring.
+    canvas.drawCircle(c, r, Paint()..color = const Color(0xFF2A2A2A));
+
+    final faceC = c.translate(0, depth);
+    final faceR = r - border;
+    final face = faceColor;
+    final well = Color.lerp(face, Colors.black, pressed ? 0.42 : 0.28)!;
+    final rim = Color.lerp(face, Colors.white, 0.35)!;
+
+    // Concave dish.
+    canvas.drawCircle(
+      faceC,
+      faceR,
+      Paint()
+        ..shader = RadialGradient(
+          center: Alignment(0.0, pressed ? 0.08 : -0.02),
+          radius: 0.92,
+          colors: [
+            well,
+            Color.lerp(face, Colors.black, 0.12)!,
+            face,
+            rim,
+          ],
+          stops: const [0.0, 0.4, 0.75, 1.0],
+        ).createShader(Rect.fromCircle(center: faceC, radius: faceR)),
+    );
+
+    // Top inner shadow (recess).
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: faceC + Offset(0, -faceR * 0.4),
+        width: faceR * 1.5,
+        height: faceR * 0.7,
+      ),
+      Paint()
+        ..shader = RadialGradient(
+          center: Alignment.topCenter,
+          radius: 1.0,
+          colors: [
+            Colors.black.withValues(alpha: pressed ? 0.4 : 0.28),
+            Colors.black.withValues(alpha: 0.0),
+          ],
+        ).createShader(
+          Rect.fromCircle(
+            center: faceC + Offset(0, -faceR * 0.3),
+            radius: faceR,
+          ),
+        ),
+    );
+
+    // Rim catch-light.
+    canvas.drawCircle(
+      faceC,
+      faceR * 0.96,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = faceR * 0.07
+        ..shader = SweepGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.0),
+            Colors.white.withValues(alpha: 0.4),
+            Colors.white.withValues(alpha: 0.05),
+            Colors.black.withValues(alpha: 0.2),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+        ).createShader(Rect.fromCircle(center: faceC, radius: faceR)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConcaveServicePainter oldDelegate) =>
+      oldDelegate.pressed != pressed || oldDelegate.faceColor != faceColor;
 }

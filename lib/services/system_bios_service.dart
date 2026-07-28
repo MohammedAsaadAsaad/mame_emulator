@@ -420,9 +420,32 @@ class SystemBiosService {
 
       if (isKey) {
         await installSupportFile(base, bytes);
-      } else {
-        await installBiosBytes(base, bytes);
+        installed++;
+        debugPrint('Support from assets: $base → $_systemDir');
+        continue;
       }
+
+      // Expand key packs into individual .key files in the system dir.
+      if (base == 'cps2keys.zip' || base == 'keys.zip') {
+        try {
+          final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+          for (final f in archive) {
+            if (!f.isFile) continue;
+            final name = p.basename(f.name).toLowerCase();
+            if (!name.endsWith('.key')) continue;
+            final content = f.content;
+            if (content.isEmpty) continue;
+            await installSupportFile(name, content);
+            installed++;
+            debugPrint('KEY from $base: $name → $_systemDir');
+          }
+        } catch (e) {
+          debugPrint('Failed expanding $base: $e');
+        }
+        continue;
+      }
+
+      await installBiosBytes(base, bytes);
       installed++;
       debugPrint('Support from assets: $base → $_systemDir');
     }
@@ -430,43 +453,126 @@ class SystemBiosService {
     return installed;
   }
 
-  /// Ensure `{romStem}.key` is beside the ROM (CPS-2 / similar).
+  /// Ensure CPS-2 `{stem}.key` is available to FBNeo for [romPath].
   ///
-  /// Order: already beside ROM → system dirs → bundled `assets/bios/{stem}.key`.
+  /// Order: already inside ZIP → beside ROM → system dirs → `assets/bios/`.
+  /// When a key is found, it is written beside the ROM, into the system dirs,
+  /// and injected into the ZIP (app-private copies) so FBNeo always sees it.
+  /// Returns false only when no key could be found anywhere (incomplete set).
   static Future<bool> ensureKeyBesideRom(String romPath) async {
     final stem = CoreLocator.romStem(p.basename(romPath));
     if (stem.isEmpty) return false;
     final keyName = '$stem.key';
-    final romDir = p.dirname(p.normalize(p.absolute(romPath)));
+    final romFile = File(p.normalize(p.absolute(romPath)));
+    if (!romFile.existsSync()) return false;
+
+    if (await _zipContainsFile(romFile.path, keyName)) {
+      return true;
+    }
+
+    final romDir = p.dirname(romFile.path);
     final beside = File(p.join(romDir, keyName));
-    if (beside.existsSync()) return true;
 
-    // Prefer a copy already installed into the system dir.
-    for (final dir in [_systemDir, _fbneoDir, p.join(_fbneoDir, 'arcade')]) {
-      final src = File(p.join(dir, keyName));
-      if (!src.existsSync()) continue;
-      try {
-        await src.copy(beside.path);
-        debugPrint('Copied $keyName → $romDir');
-        return true;
-      } catch (e) {
-        debugPrint('Could not copy $keyName beside ROM: $e');
+    Uint8List? keyBytes;
+    if (beside.existsSync()) {
+      keyBytes = await beside.readAsBytes();
+    }
+
+    if (keyBytes == null) {
+      for (final dir in [_systemDir, _fbneoDir, p.join(_fbneoDir, 'arcade')]) {
+        final src = File(p.join(dir, keyName));
+        if (!src.existsSync()) continue;
+        keyBytes = await src.readAsBytes();
+        break;
       }
     }
 
-    // On-demand from assets/bios/ (in case startup install missed it).
-    final bytes = await _loadAssetBytes('$assetBiosPrefix$keyName');
-    if (bytes != null) {
-      await installSupportFile(keyName, bytes, force: true);
+    keyBytes ??= await _loadAssetBytes('$assetBiosPrefix$keyName');
+    keyBytes ??= await _keyFromBundledKeyArchive(keyName);
+
+    if (keyBytes == null || keyBytes.isEmpty) {
+      return false;
+    }
+
+    await installSupportFile(keyName, keyBytes, force: true);
+    try {
+      if (!beside.existsSync() || beside.lengthSync() != keyBytes.length) {
+        await beside.writeAsBytes(keyBytes, flush: true);
+      }
+    } catch (e) {
+      debugPrint('Could not write $keyName beside ROM: $e');
+    }
+
+    try {
+      await _injectFileIntoZip(romFile.path, keyName, keyBytes);
+      debugPrint('CPS key ready: $keyName (beside + inside ZIP)');
+    } catch (e) {
+      debugPrint('Could not inject $keyName into ZIP (beside copy still tried): $e');
+    }
+    return true;
+  }
+
+  static Future<Uint8List?> _keyFromBundledKeyArchive(String keyName) async {
+    for (final pack in [
+      '${assetBiosPrefix}cps2keys.zip',
+      '${assetBiosPrefix}keys.zip',
+    ]) {
+      final bytes = await _loadAssetBytes(pack);
+      if (bytes == null) continue;
       try {
-        await beside.writeAsBytes(bytes, flush: true);
-        debugPrint('KEY from assets: $keyName → $romDir');
-        return true;
+        final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+        for (final f in archive) {
+          if (!f.isFile) continue;
+          if (p.basename(f.name).toLowerCase() != keyName) continue;
+          final content = f.content;
+          if (content.isEmpty) continue;
+          return Uint8List.fromList(content);
+        }
       } catch (e) {
-        debugPrint('Could not write $keyName beside ROM: $e');
+        debugPrint('Failed reading $pack: $e');
       }
     }
+    return null;
+  }
+
+  static Future<bool> _zipContainsFile(String zipPath, String fileName) async {
+    try {
+      final lower = fileName.toLowerCase();
+      final archive =
+          ZipDecoder().decodeBytes(await File(zipPath).readAsBytes(), verify: false);
+      for (final f in archive) {
+        if (!f.isFile) continue;
+        if (p.basename(f.name).toLowerCase() == lower) return true;
+      }
+    } catch (_) {}
     return false;
+  }
+
+  /// Add/replace [fileName] inside [zipPath] without changing other members.
+  static Future<void> _injectFileIntoZip(
+    String zipPath,
+    String fileName,
+    List<int> bytes,
+  ) async {
+    final lower = fileName.toLowerCase();
+    final original = await File(zipPath).readAsBytes();
+    final decoded = ZipDecoder().decodeBytes(original, verify: false);
+    final out = Archive();
+    for (final f in decoded) {
+      if (f.isFile && p.basename(f.name).toLowerCase() == lower) {
+        continue; // replace
+      }
+      out.add(f);
+    }
+    out.add(ArchiveFile(fileName, bytes.length, bytes));
+    final encoded = ZipEncoder().encode(out);
+    if (encoded.isEmpty) {
+      throw StateError('ZipEncoder returned empty for $zipPath');
+    }
+    // Atomic-ish replace
+    final tmp = File('$zipPath.injecting');
+    await tmp.writeAsBytes(encoded, flush: true);
+    await tmp.rename(zipPath);
   }
 
   /// Copy `neogeo.zip` next to the ROM (FBNeo also searches the ROM folder).

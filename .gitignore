@@ -77,6 +77,10 @@ assets/bios/*.key
 assets/bios/neogeo.zip.*
 !assets/bios/README.md
 
+# FBNeo cheat pack zip (large; sync locally / CI — do not commit uncompressed)
+assets/cheats/*.zip
+!assets/cheats/README.md
+
 # Local secrets / keystores
 *.jks
 *.keystore

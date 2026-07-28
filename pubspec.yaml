@@ -32,6 +32,7 @@ flutter:
     - assets/demo_frame.png
     - assets/icon/app_icon.png
     - assets/bios/
+    - assets/cheats/
   fonts:
     - family: PressStart2P
       fonts:

@@ -18,6 +18,7 @@ import '../libretro/libretro_bindings.dart';
 import '../libretro/libretro_host.dart';
 import '../models/image_enhancement_mode.dart';
 import '../models/library_models.dart';
+import '../services/cheat_service.dart';
 import '../services/game_metadata_service.dart';
 import '../services/rom_library_service.dart';
 import '../services/system_bios_service.dart';
@@ -84,6 +85,10 @@ class EmulatorController extends ChangeNotifier {
     if (biosCount > 0) {
       debugPrint('Installed $biosCount BIOS archive(s) from assets/bios/');
     }
+    final cheatCount = await CheatService.installBundledCheats();
+    if (cheatCount > 0) {
+      debugPrint('Installed $cheatCount FBNeo cheat file(s)');
+    }
     await keyBindings.load();
     await _loadSpeed();
     await _loadShaderPrefs();
@@ -131,6 +136,16 @@ class EmulatorController extends ChangeNotifier {
   }
 
   void toggleSound() => setSoundEnabled(!soundEnabled);
+
+  /// Apply an FBNeo cheat core-option (takes effect on the next frame).
+  void setCheat(String key, String value) {
+    _host.setCoreOption(key, value);
+    final short = value.length > 28 ? '${value.substring(0, 28)}…' : value;
+    _flash('CHEAT: $short');
+    notifyListeners();
+  }
+
+  bool get hasCheats => _host.cheatOptions.isNotEmpty;
 
   Future<void> setSoundVolume(double volume) async {
     soundVolume = volume.clamp(0.0, 1.0);
@@ -264,6 +279,7 @@ class EmulatorController extends ChangeNotifier {
       // Install personal assets/bios/ silently (Neo Geo, CPS keys, …).
       // Player never picks BIOS — only chooses a game.
       await SystemBiosService.installBundledAssets();
+      await CheatService.installBundledCheats();
       var bios = await SystemBiosService.ensureForRom(
         game.path,
         extraDirs: libraryDirs,
@@ -287,13 +303,14 @@ class EmulatorController extends ChangeNotifier {
       if (bios.biosArchivesInstalled > 0) {
         _flash('BIOS READY');
       }
-      // CPS-2 etc.: place `{game}.key` beside the ROM from system dir / assets/bios/.
+      // CPS-2: place/inject `{game}.key` from system dir / assets/bios/.
+      // Missing key ⇒ incomplete romset (FBNeo error). Neo Geo path untouched.
       final hadKey = await SystemBiosService.ensureKeyBesideRom(game.path);
       if (!hadKey) {
         final stem = CoreLocator.romStem(p.basename(game.path));
         debugPrint(
-          'No $stem.key beside ROM or in assets/bios/ — '
-          'CPS-2 sets need this file (FBNeo will error if required).',
+          'No $stem.key in ZIP / assets/bios/ — '
+          'CPS-2 sets need this file for FBNeo.',
         );
       }
       await ensureCore(romPath: game.path);

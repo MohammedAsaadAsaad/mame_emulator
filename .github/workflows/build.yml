@@ -109,6 +109,15 @@ jobs:
           # Confirm Flutter will package it
           test -f assets/bios/neogeo.zip
           ls -lh assets/bios/neogeo.zip
+      - name: Bundle FBNeo cheat pack into assets
+        run: |
+          chmod +x scripts/sync_cheats.sh
+          curl -fsSL -o /tmp/fbneo-cheats.zip \
+            https://github.com/finalburnneo/FBNeo-cheats/archive/refs/heads/master.zip
+          unzip -q /tmp/fbneo-cheats.zip -d /tmp
+          ./scripts/sync_cheats.sh /tmp/FBNeo-cheats-master/cheats
+          test -f assets/cheats/fbneo_cheats.zip
+          ls -lh assets/cheats/fbneo_cheats.zip
       - run: flutter pub get
       - name: Fetch Android natives (cores + helpers)
         env:

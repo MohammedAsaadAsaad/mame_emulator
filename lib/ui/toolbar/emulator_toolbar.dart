@@ -14,6 +14,7 @@ class EmulatorToolbar extends StatelessWidget {
     required this.onKeys,
     required this.onSpeed,
     required this.onSettings,
+    this.onCheats,
     this.compact = false,
   });
 
@@ -24,6 +25,7 @@ class EmulatorToolbar extends StatelessWidget {
   final VoidCallback onKeys;
   final VoidCallback onSpeed;
   final VoidCallback onSettings;
+  final VoidCallback? onCheats;
   final bool compact;
 
   @override
@@ -87,6 +89,11 @@ class EmulatorToolbar extends StatelessWidget {
               onTap: controller.volumeUp,
             ),
             _Tool(icon: Icons.save, label: 'Slots', onTap: onSlots),
+            _Tool(
+              icon: Icons.auto_fix_high,
+              label: 'Cheats',
+              onTap: loaded ? onCheats : null,
+            ),
             _Tool(icon: Icons.keyboard, label: 'Keys', onTap: onKeys),
             _Tool(
               icon: controller.showOnScreenPad

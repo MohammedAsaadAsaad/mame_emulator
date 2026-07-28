@@ -61,6 +61,7 @@ class SettingsSheet {
     required VoidCallback onKeys,
     required VoidCallback onSlots,
     required VoidCallback onSpeed,
+    VoidCallback? onCheats,
   }) {
     return EmulationPauseGuard.run(
       emu,
@@ -111,6 +112,34 @@ class SettingsSheet {
                   Navigator.pop(ctx);
                   onSlots();
                 },
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.auto_fix_high,
+                  color: emu.hasGame
+                      ? const Color(0xFFE8DCC8)
+                      : const Color(0xFF666666),
+                ),
+                title: Text(
+                  'Cheats',
+                  style: TextStyle(
+                    color: emu.hasGame ? Colors.white : const Color(0xFF666666),
+                  ),
+                ),
+                subtitle: Text(
+                  emu.hasGame
+                      ? (emu.hasCheats
+                          ? '${emu.host.cheatOptions.length} available'
+                          : 'None for this game')
+                      : 'Load a game first',
+                  style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                ),
+                onTap: !emu.hasGame || onCheats == null
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        onCheats();
+                      },
               ),
               ListTile(
                 leading: const Icon(Icons.speed, color: Color(0xFFE8DCC8)),

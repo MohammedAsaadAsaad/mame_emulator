@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../audio/arcade_audio.dart';
+import '../services/cheat_service.dart';
 import 'libretro_bindings.dart';
 
 /// Hosts a libretro arcade core (FBNeo / MAME2003+) and exposes frames + input.
@@ -47,6 +48,10 @@ class LibretroHost extends ChangeNotifier {
   /// Host-provided libretro variables (GET_VARIABLE).
   final Map<String, String> coreOptions = {};
   final List<Pointer<Utf8>> _optionValuePtrs = [];
+  bool _variablesUpdated = false;
+
+  /// Cheat core options discovered via SET_VARIABLES after loadGame.
+  final List<CheatOption> cheatOptions = [];
 
   ui.Image? frame;
   int frameWidth = 0;
@@ -63,6 +68,87 @@ class LibretroHost extends ChangeNotifier {
 
   bool get isGameLoaded => _gameLoaded;
   bool get isRunning => _running;
+
+  /// Enable/change a core option (used for FBNeo cheats). Applied next frame.
+  void setCoreOption(String key, String value) {
+    coreOptions[key] = value;
+    _variablesUpdated = true;
+    // Keep cheatOptions list in sync for the UI.
+    for (var i = 0; i < cheatOptions.length; i++) {
+      final c = cheatOptions[i];
+      if (c.key == key) {
+        cheatOptions[i] = CheatOption(
+          key: c.key,
+          label: c.label,
+          values: c.values,
+          current: value,
+        );
+        break;
+      }
+    }
+    notifyListeners();
+  }
+
+  void _ingestVariables(Pointer<RetroVariable> first) {
+    cheatOptions.clear();
+    var ptr = first;
+    while (ptr.ref.key != nullptr) {
+      final key = ptr.ref.key.toDartString();
+      final raw = ptr.ref.value != nullptr ? ptr.ref.value.toDartString() : '';
+      // Format: "Description; val0|val1|val2"
+      final semi = raw.indexOf(';');
+      final desc = semi >= 0 ? raw.substring(0, semi).trim() : raw.trim();
+      final valuesPart = semi >= 0 ? raw.substring(semi + 1) : '';
+      final values = valuesPart
+          .split('|')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      if (!coreOptions.containsKey(key) && values.isNotEmpty) {
+        coreOptions[key] = values.first;
+      }
+
+      if (key.startsWith('fbneo-cheat-') && values.isNotEmpty) {
+        final label = _cleanCheatLabel(desc);
+        if (label.isEmpty) {
+          // Section spacer from blank cheat " " entries.
+          cheatOptions.add(CheatOption(
+            key: key,
+            label: '',
+            values: values,
+            current: coreOptions[key] ?? values.first,
+          ));
+        } else {
+          cheatOptions.add(CheatOption(
+            key: key,
+            label: label,
+            values: values,
+            current: coreOptions[key] ?? values.first,
+          ));
+        }
+      }
+
+      ptr = Pointer<RetroVariable>.fromAddress(
+        ptr.address + sizeOf<RetroVariable>(),
+      );
+    }
+    debugPrint('Core variables: ${coreOptions.length}, cheats: ${cheatOptions.length}');
+  }
+
+  /// FBNeo desc is like `[Cheat][mslug3.ini] Infinite Lives PL1`.
+  static String _cleanCheatLabel(String desc) {
+    var label = desc.trim();
+    label = label.replaceFirst(RegExp(r'^\[Cheat\]\s*', caseSensitive: false), '');
+    // One or more `[filename.ini]` / heading tags.
+    while (true) {
+      final next = label.replaceFirst(RegExp(r'^\]?\[[^\]]+\]\s*'), '');
+      if (next == label) break;
+      label = next;
+    }
+    if (label.startsWith('-')) label = label.substring(1).trim();
+    return label.trim();
+  }
 
   Future<void> loadCore(String corePath) async {
     await unload();
@@ -165,6 +251,11 @@ class LibretroHost extends ChangeNotifier {
       _gameLoaded = false;
       _freeGamePath();
     }
+
+    // Fresh cheat state — FBNeo rebuilds options during retro_load_game.
+    cheatOptions.clear();
+    coreOptions.removeWhere((k, _) => k.startsWith('fbneo-cheat-'));
+    _variablesUpdated = false;
 
     final info = calloc<RetroGameInfo>();
     _gamePath = p.absolute(path).toNativeUtf8();
@@ -391,10 +482,38 @@ class LibretroHost extends ChangeNotifier {
         return true;
       case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
         if (data != nullptr) {
-          data.cast<Uint8>().value = 0;
+          data.cast<Uint8>().value = _variablesUpdated ? 1 : 0;
+          _variablesUpdated = false;
         }
         return true;
       case RETRO_ENVIRONMENT_SET_VARIABLES:
+        if (data != nullptr) {
+          _ingestVariables(data.cast<RetroVariable>());
+          notifyListeners();
+        }
+        return true;
+      case 78: // RETRO_ENVIRONMENT_SET_VARIABLE — FBNeo resets cheats at boot
+        if (data != nullptr) {
+          final variable = data.cast<RetroVariable>().ref;
+          if (variable.key != nullptr && variable.value != nullptr) {
+            final key = variable.key.toDartString();
+            final value = variable.value.toDartString();
+            coreOptions[key] = value;
+            for (var i = 0; i < cheatOptions.length; i++) {
+              final c = cheatOptions[i];
+              if (c.key == key) {
+                cheatOptions[i] = CheatOption(
+                  key: c.key,
+                  label: c.label,
+                  values: c.values,
+                  current: value,
+                );
+                break;
+              }
+            }
+          }
+        }
+        return true;
       case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
       case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
       case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
