@@ -26,3 +26,7 @@ On startup the app copies selected BIOS into the libretro system directory
 (Linux / Windows / Android). No UI picker.
 
 These zips are gitignored so they are not committed by accident.
+
+**Android / GitHub APK:** CI builds do **not** include `neogeo.zip` (gitignored).
+Either rebuild the APK on your PC with this folder present, or on first Metal Slug
+launch pick `neogeo.zip` once — it is saved into app storage for later.

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../controllers/input_mapper.dart';
 import '../../emulator/emulator_controller.dart';
 import '../../utils/emulation_pause_guard.dart';
+import '../../utils/platform_info.dart';
 
 class KeyBindingsSheet {
   static Future<void> show(BuildContext context, EmulatorController emu) {
@@ -79,8 +80,12 @@ class _KeysBodyState extends State<_KeysBody> {
               const SizedBox(height: 6),
               Text(
                 _listening == null
-                    ? 'Tap a row, then press a key'
-                    : 'Listening for ${_listening!.shortLabel}… (Esc cancel)',
+                    ? (isDesktopPlatform
+                        ? 'Tap a row, then press a key'
+                        : 'Tap a row, then press a key on a keyboard')
+                    : (isDesktopPlatform
+                        ? 'Listening for ${_listening!.shortLabel}… (Esc cancel)'
+                        : 'Listening for ${_listening!.shortLabel}…'),
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
               ),
               const SizedBox(height: 8),

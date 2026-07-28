@@ -292,31 +292,56 @@ class SystemBiosService {
         base.startsWith('neogeo.zip.');
   }
 
+  static Uint8List _bytesFromAsset(ByteData data) => data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+
   /// Install BIOS zips the developer placed under `assets/bios/` (personal use).
   /// Among multiple `neogeo.zip*` files, CRC-picks the best FBNeo match.
+  ///
+  /// Note: CI APKs usually lack these files (gitignored). Local `flutter build apk`
+  /// with zips present in `assets/bios/` bundles them into the APK.
   static Future<int> installBundledAssets() async {
     var installed = 0;
 
     // --- Neo Geo: pick best among neogeo.zip / neogeo.zip.* ---
     final neoCandidates = <String, Uint8List>{};
+
+    // Canonical paths first (more reliable than manifest-only on Android).
+    for (final key in [
+      '${assetBiosPrefix}neogeo.zip',
+      '${assetBiosPrefix}neogeo.7z',
+    ]) {
+      try {
+        final data = await rootBundle.load(key);
+        final bytes = _bytesFromAsset(data);
+        if (bytes.isNotEmpty) neoCandidates[key] = bytes;
+      } catch (e) {
+        debugPrint('BIOS asset miss $key: $e');
+      }
+    }
+
+    // Hashed copies: assets/bios/neogeo.zip.<hash>
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       for (final key in manifest.listAssets()) {
         if (!key.startsWith(assetBiosPrefix)) continue;
         if (!_isNeogeoAssetKey(key)) continue;
+        if (neoCandidates.containsKey(key)) continue;
         try {
           final data = await rootBundle.load(key);
-          final bytes = data.buffer.asUint8List();
+          final bytes = _bytesFromAsset(data);
           if (bytes.isNotEmpty) neoCandidates[key] = bytes;
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('BIOS asset miss $key: $e');
+        }
       }
-    } catch (_) {
-      // Fallback: try canonical name only.
-      try {
-        final data = await rootBundle.load('${assetBiosPrefix}neogeo.zip');
-        neoCandidates['${assetBiosPrefix}neogeo.zip'] = data.buffer.asUint8List();
-      } catch (_) {}
+    } catch (e) {
+      debugPrint('AssetManifest bios scan failed: $e');
     }
+
+    debugPrint('Neo Geo asset candidates: ${neoCandidates.keys.toList()}');
 
     if (neoCandidates.isNotEmpty) {
       String? bestKey;
@@ -324,7 +349,9 @@ class SystemBiosService {
       Uint8List? bestBytes;
       for (final e in neoCandidates.entries) {
         final score = scoreNeogeoZip(e.value);
-        debugPrint('Neo Geo candidate ${e.key} score=$score');
+        debugPrint(
+          'Neo Geo candidate ${e.key} score=$score size=${e.value.length}',
+        );
         if (score > bestScore) {
           bestScore = score;
           bestKey = e.key;
@@ -351,7 +378,7 @@ class SystemBiosService {
       final assetPath = '$assetBiosPrefix$name';
       try {
         final data = await rootBundle.load(assetPath);
-        final bytes = data.buffer.asUint8List();
+        final bytes = _bytesFromAsset(data);
         if (bytes.isEmpty) continue;
         await installBiosBytes(name, bytes);
         installed++;
@@ -434,14 +461,26 @@ class SystemBiosService {
     );
   }
 
-  static String missingNeogeoMessage(BiosProvisionResult r) =>
-      'Neo Geo BIOS missing (neogeo.zip).\n'
-      'For personal use, put neogeo.zip in:\n'
-      '  assets/bios/neogeo.zip\n'
-      'then rebuild / restart.\n'
-      'Also checked:\n'
-      '  ${r.romDir}\n'
-      '  ${r.systemDir}';
+  static String missingNeogeoMessage(BiosProvisionResult r) {
+    final buf = StringBuffer()
+      ..writeln('Neo Geo BIOS missing (neogeo.zip).')
+      ..writeln('Checked:')
+      ..writeln('  ${r.romDir}')
+      ..writeln('  ${r.systemDir}');
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      buf.writeln(
+        'GitHub APK builds omit personal BIOS (gitignored).\n'
+        'Import neogeo.zip once, or rebuild the APK locally '
+        'with assets/bios/neogeo.zip present.',
+      );
+    } else {
+      buf.writeln(
+        'Put neogeo.zip in assets/bios/ then rebuild, '
+        'or place it next to your ROMs.',
+      );
+    }
+    return buf.toString().trim();
+  }
 }
 
 class BiosProvisionResult {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../emulator/emulator_controller.dart';
 import '../../models/image_enhancement_mode.dart';
+import '../../utils/platform_info.dart';
 import '../theme/arcade_text.dart';
 import 'enhance_shader.dart';
 
@@ -285,7 +286,9 @@ class _AttractMenuState extends State<AttractMenu> {
           ),
           const SizedBox(height: 8),
           Text(
-            '↑↓ MOVE   A / START ENTER',
+            isDesktopPlatform
+                ? '↑↓ MOVE   A / START ENTER'
+                : '↑↓ MOVE   A / START',
             textAlign: TextAlign.center,
             style: ArcadeText.dim(size: 7),
           ),

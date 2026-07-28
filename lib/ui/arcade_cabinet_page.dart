@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../emulator/emulator_controller.dart';
+import '../utils/platform_info.dart';
 import 'control_panel.dart';
 import 'sheets/game_library_sheet.dart';
 import 'sheets/key_bindings_sheet.dart';
@@ -154,7 +155,9 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                   color: const Color(0x88000000),
                   child: Center(
                     child: Text(
-                      'PAUSED — TAP OR SPACE',
+                      isMobilePlatform
+                          ? 'PAUSED — TAP'
+                          : 'PAUSED — TAP OR SPACE',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontWeight: FontWeight.w800,
@@ -296,7 +299,9 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                           color: const Color(0xCC222222),
                           borderRadius: BorderRadius.circular(8),
                           child: IconButton(
-                            tooltip: 'Exit fullscreen (F11 / Esc)',
+                            tooltip: isDesktopPlatform
+                                ? 'Exit fullscreen (F11 / Esc)'
+                                : 'Exit fullscreen',
                             onPressed: _emu.exitFullscreen,
                             icon: const Icon(Icons.fullscreen_exit, color: Color(0xFFE8C84A)),
                           ),

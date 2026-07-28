@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../emulator/emulator_controller.dart';
 import '../../models/image_enhancement_mode.dart';
 import '../../utils/emulation_pause_guard.dart';
+import '../../utils/platform_info.dart';
 
 class SpeedSheet {
   static Future<void> show(BuildContext context, EmulatorController emu) {
@@ -170,7 +171,9 @@ class SettingsSheet {
                 secondary: const Icon(Icons.fullscreen, color: Color(0xFFE8DCC8)),
                 title: const Text('Fullscreen', style: TextStyle(color: Colors.white)),
                 subtitle: Text(
-                  'F11 or Alt+Enter · Esc to leave',
+                  isDesktopPlatform
+                      ? 'F11 or Alt+Enter · Esc to leave'
+                      : 'Tap Full above or this switch',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
                 ),
                 value: emu.isFullscreen,

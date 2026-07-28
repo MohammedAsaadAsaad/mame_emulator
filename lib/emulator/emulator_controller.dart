@@ -22,6 +22,7 @@ import '../services/game_metadata_service.dart';
 import '../services/rom_library_service.dart';
 import '../services/system_bios_service.dart';
 import '../ui/widgets/enhance_shader.dart';
+import '../utils/platform_info.dart';
 
 enum PadButton { a, b, c, d }
 
@@ -272,9 +273,46 @@ class EmulatorController extends ChangeNotifier {
           extraDirs: libraryDirs,
         );
       }
+      // Mobile / CI APKs usually omit gitignored BIOS — import once and cache.
+      if (bios.needsNeogeo && !bios.hasNeogeo && isMobilePlatform) {
+        _flash('SELECT neogeo.zip');
+        _host.status =
+            'Neo Geo BIOS required once.\n'
+            'Pick neogeo.zip — it will be saved for next launches.';
+        notifyListeners();
+        booting = false;
+        notifyListeners();
+        final picked = await FilePicker.pickFiles(
+          dialogTitle: 'Select Neo Geo BIOS (neogeo.zip)',
+          type: FileType.custom,
+          allowedExtensions: const ['zip', '7z'],
+        );
+        booting = true;
+        notifyListeners();
+        final pathPicked = picked?.files.singleOrNull?.path;
+        if (pathPicked != null) {
+          final base = p.basename(pathPicked).toLowerCase();
+          if (base == 'neogeo.zip' ||
+              base == 'neogeo.7z' ||
+              base.startsWith('neogeo.zip.')) {
+            await SystemBiosService.installBiosArchive(pathPicked);
+            bios = await SystemBiosService.ensureForRom(
+              game.path,
+              extraDirs: libraryDirs,
+            );
+            if (bios.hasNeogeo) {
+              _flash('BIOS INSTALLED');
+            }
+          } else {
+            _flash('NEED FILE NAMED neogeo.zip');
+          }
+        }
+      }
       if (bios.needsNeogeo && !bios.hasNeogeo) {
         _host.status = SystemBiosService.missingNeogeoMessage(bios);
-        _flash('NEED neogeo.zip IN assets/bios');
+        _flash(
+          isMobilePlatform ? 'NEED neogeo.zip (IMPORT)' : 'NEED neogeo.zip IN assets/bios',
+        );
         notifyListeners();
         return;
       }
@@ -427,8 +465,7 @@ class EmulatorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get _isDesktop =>
-      !kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+  bool get _isDesktop => isDesktopPlatform;
 
   Future<void> toggleFullscreen() async {
     try {
@@ -441,7 +478,7 @@ class EmulatorController extends ChangeNotifier {
       }
       if (isFullscreen) {
         await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        _flash('FULLSCREEN — F11 / ESC');
+        _flash(_isDesktop ? 'FULLSCREEN — F11 / ESC' : 'FULLSCREEN');
       } else {
         await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         _flash('WINDOWED');
