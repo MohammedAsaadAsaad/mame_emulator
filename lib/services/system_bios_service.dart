@@ -469,6 +469,58 @@ class SystemBiosService {
     return false;
   }
 
+  /// Copy `neogeo.zip` next to the ROM (FBNeo also searches the ROM folder).
+  static Future<bool> ensureNeogeoBesideRom(String romPath) async {
+    if (!looksLikeNeoGeo(p.basename(romPath))) return hasNeogeoBios(romPath: romPath);
+
+    final romDir = p.dirname(p.normalize(p.absolute(romPath)));
+    final beside = File(p.join(romDir, 'neogeo.zip'));
+    if (beside.existsSync() && beside.lengthSync() > 100000) {
+      return true;
+    }
+
+    File? best;
+    var bestScore = -1;
+    for (final c in _neogeoCandidates(romPath: romPath)) {
+      final f = File(c);
+      if (!f.existsSync()) continue;
+      try {
+        final bytes = await f.readAsBytes();
+        final score = scoreNeogeoZip(bytes);
+        if (score > bestScore) {
+          bestScore = score;
+          best = f;
+        }
+      } catch (_) {}
+    }
+
+    final srcFile = best;
+    if (srcFile == null || bestScore <= 0) {
+      final bytes = await _loadAssetBytes('${assetBiosPrefix}neogeo.zip');
+      if (bytes != null && scoreNeogeoZip(bytes) > 0) {
+        await installBiosBytes('neogeo.zip', bytes, force: true);
+        try {
+          await beside.writeAsBytes(bytes, flush: true);
+          debugPrint('neogeo.zip from assets → $romDir');
+          return true;
+        } catch (e) {
+          debugPrint('Could not write neogeo.zip beside ROM: $e');
+          return hasNeogeoBios(romPath: romPath);
+        }
+      }
+      return hasNeogeoBios(romPath: romPath);
+    }
+
+    try {
+      await srcFile.copy(beside.path);
+      debugPrint('Copied neogeo.zip → $romDir (score=$bestScore)');
+      return true;
+    } catch (e) {
+      debugPrint('Could not copy neogeo.zip beside ROM: $e');
+      return hasNeogeoBios(romPath: romPath);
+    }
+  }
+
   /// Copy [source] into FBNeo system search paths (idempotent).
   static Future<void> installBiosArchive(String source) async {
     final file = File(source);
@@ -530,7 +582,14 @@ class SystemBiosService {
     }
 
     final neo = looksLikeNeoGeo(p.basename(romPath));
+    if (neo) {
+      await ensureNeogeoBesideRom(romPath);
+    }
     final hasNeo = hasNeogeoBios(romPath: romPath);
+    debugPrint(
+      'BIOS ensureForRom neo=$neo hasNeo=$hasNeo '
+      'system=$_systemDir romDir=$romDir',
+    );
     return BiosProvisionResult(
       biosArchivesInstalled: biosFound,
       needsNeogeo: neo,

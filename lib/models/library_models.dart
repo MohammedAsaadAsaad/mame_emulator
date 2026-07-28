@@ -29,7 +29,7 @@ class LibraryGame {
 
   final String id;
   String title;
-  /// Absolute path to the original ROM on disk (not copied into app storage).
+  /// Absolute path to the ROM on disk (on mobile: under app-private `roms/`).
   String path;
   DateTime? lastPlayed;
   bool favorite;

@@ -100,6 +100,15 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Restore Neo Geo BIOS into assets (required for Metal Slug on Android)
+        env:
+          NEOGEO_BIOS_PASSPHRASE: ${{ secrets.NEOGEO_BIOS_PASSPHRASE }}
+        run: |
+          chmod +x scripts/decrypt_bios.sh
+          ./scripts/decrypt_bios.sh
+          # Confirm Flutter will package it
+          test -f assets/bios/neogeo.zip
+          ls -lh assets/bios/neogeo.zip
       - run: flutter pub get
       - name: Fetch Android natives (cores + helpers)
         env:
@@ -109,6 +118,16 @@ jobs:
           ./scripts/fetch_android_cores.sh
       - name: Build arm64 APK
         run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK contains neogeo.zip
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          # Flutter assets live under assets/flutter_assets/ in the APK
+          if ! unzip -l "$APK" | grep -E 'flutter_assets/assets/bios/neogeo\.zip$'; then
+            echo 'APK is missing bundled Neo Geo BIOS'
+            unzip -l "$APK" | grep -i bios || true
+            exit 1
+          fi
+          echo 'APK includes assets/bios/neogeo.zip'
       - name: Collect APK
         run: |
           mkdir -p dist

@@ -34,5 +34,8 @@ the game ZIP** before load. A game ZIP alone without its `.key` will show FBNeo�
 
 These files are gitignored so they are not committed by accident.
 
-**Important:** rebuild the app after adding files here. The player never picks
-BIOS — choosing a game loads support files from assets automatically.
+**Important:** rebuild the app after adding plaintext files here. The player never
+picks BIOS — choosing a game loads support files from assets automatically.
+
+Android CI decrypts `ci/bios/neogeo.zip.enc` into this folder before packaging
+so Metal Slug works on phone APKs without committing plaintext BIOS.

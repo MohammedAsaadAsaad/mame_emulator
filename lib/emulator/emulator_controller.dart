@@ -264,12 +264,21 @@ class EmulatorController extends ChangeNotifier {
       // Install personal assets/bios/ silently (Neo Geo, CPS keys, …).
       // Player never picks BIOS — only chooses a game.
       await SystemBiosService.installBundledAssets();
-      final bios = await SystemBiosService.ensureForRom(
+      var bios = await SystemBiosService.ensureForRom(
         game.path,
         extraDirs: libraryDirs,
       );
+      // Mobile: ROM is in app-private storage — place neogeo.zip beside it again.
+      if (bios.needsNeogeo) {
+        await SystemBiosService.ensureNeogeoBesideRom(game.path);
+        bios = await SystemBiosService.ensureForRom(
+          game.path,
+          extraDirs: libraryDirs,
+        );
+      }
       if (bios.needsNeogeo && !bios.hasNeogeo) {
-        // Bundled BIOS missing from this build — do not open a file picker.
+        debugPrint(CoreLocator.diagnose());
+        debugPrint('Neo Geo BIOS missing after asset install → ${bios.systemDir}');
         _host.status = SystemBiosService.missingNeogeoMessage(bios);
         _flash('CANNOT START');
         notifyListeners();

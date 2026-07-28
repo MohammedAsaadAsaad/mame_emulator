@@ -8,8 +8,11 @@ import '../libretro/libretro_host.dart';
 import '../models/library_models.dart';
 import 'system_bios_service.dart';
 
-/// Persistent ROM library that indexes games at their **original paths**
-/// (no copy into app storage). Save states / thumbnails live under app support.
+/// Persistent ROM library. Save states / thumbnails live under app support.
+///
+/// Desktop indexes games at their original paths. On Android/iOS, ROMs are
+/// copied into an app-private `roms/` folder so Neo Geo BIOS and CPS `.key`
+/// files can be written beside each game (external storage is often read-only).
 class RomLibraryService {
   static const _manifestName = 'library.json';
 
@@ -36,6 +39,37 @@ class RomLibraryService {
     final dir = Directory(p.join((await appDataRoot()).path, 'save_thumbnails'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
+  }
+
+  /// App-owned ROM folder (Android/iOS). Writable so we can place BIOS/keys beside games.
+  Future<Directory> romsDir() async {
+    final dir = Directory(p.join((await appDataRoot()).path, 'roms'));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  /// On mobile, copy [path] into app-private `roms/` so BIOS/keys can sit beside the ZIP.
+  /// Desktop keeps the original path (writable project / user folders).
+  Future<String> ensurePlayableRomPath(String path) async {
+    final abs = p.normalize(p.absolute(path));
+    if (!File(abs).existsSync()) {
+      throw StateError('ROM not found: $abs');
+    }
+    if (!Platform.isAndroid && !Platform.isIOS) return abs;
+
+    final destDir = await romsDir();
+    final destPath = p.join(destDir.path, p.basename(abs));
+    if (p.equals(abs, destPath)) return destPath;
+
+    final dest = File(destPath);
+    final src = File(abs);
+    final needsCopy = !dest.existsSync() ||
+        dest.lengthSync() != src.lengthSync() ||
+        dest.lastModifiedSync().isBefore(src.lastModifiedSync());
+    if (needsCopy) {
+      await src.copy(destPath);
+    }
+    return destPath;
   }
 
   Future<File> _manifest() async =>
@@ -108,30 +142,35 @@ class RomLibraryService {
   /// Persist an updated library list (e.g. after metadata enrichment).
   Future<void> saveAll(List<LibraryGame> games) => _save(games);
 
-  /// Index a ROM at its current location — does **not** copy the file.
+  /// Index a ROM. On mobile, copies into app-private storage first.
   Future<LibraryGame> importPath(String path) async {
-    final abs = p.normalize(p.absolute(path));
-    if (!File(abs).existsSync()) {
-      throw StateError('ROM not found: $abs');
-    }
-
-    if (SystemBiosService.isBiosArchive(abs)) {
-      await SystemBiosService.installBiosArchive(abs);
+    final playable = await ensurePlayableRomPath(path);
+    if (SystemBiosService.isBiosArchive(playable)) {
+      await SystemBiosService.installBiosArchive(playable);
       return LibraryGame(
-        id: idForPath(abs),
-        title: p.basenameWithoutExtension(abs),
-        path: abs,
+        id: idForPath(playable),
+        title: p.basenameWithoutExtension(playable),
+        path: playable,
       );
     }
 
     final games = await loadAll();
-    final existing = games.where((g) => p.equals(g.path, abs)).firstOrNull;
+    final existing = games.where((g) => p.equals(g.path, playable)).firstOrNull;
     if (existing != null) return existing;
 
+    // Prefer updating an entry that still points at the pre-copy path.
+    final absIn = p.normalize(p.absolute(path));
+    final staleIdx = games.indexWhere((g) => p.equals(g.path, absIn));
+    if (staleIdx >= 0 && !p.equals(games[staleIdx].path, playable)) {
+      games[staleIdx].path = playable;
+      await _save(games);
+      return games[staleIdx];
+    }
+
     final game = LibraryGame(
-      id: idForPath(abs),
-      title: p.basenameWithoutExtension(abs),
-      path: abs,
+      id: idForPath(playable),
+      title: p.basenameWithoutExtension(playable),
+      path: playable,
     );
     games.add(game);
     await _save(games);
