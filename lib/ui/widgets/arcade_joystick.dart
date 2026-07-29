@@ -12,6 +12,7 @@ class ArcadeJoystick extends StatefulWidget {
     required this.onChanged,
     this.size = 150,
     this.ghost = false,
+    this.externalNormalized = Offset.zero,
   });
 
   final ValueChanged<Offset> onChanged;
@@ -19,6 +20,9 @@ class ArcadeJoystick extends StatefulWidget {
 
   /// Soft / transparent plate for overlays and fullscreen.
   final bool ghost;
+
+  /// Keyboard-driven stick (−1..1). Used when the user is not touching.
+  final Offset externalNormalized;
 
   @override
   State<ArcadeJoystick> createState() => _ArcadeJoystickState();
@@ -33,11 +37,20 @@ class _ArcadeJoystickState extends State<ArcadeJoystick> {
   /// Visual pad size; hit target is slightly larger around it.
   double get _hit => widget.size * 1.28;
 
+  double get _maxThrow => widget.size * 0.38;
+
+  Offset get _displayKnob {
+    if (_activePointer != null) return _knob;
+    final ext = widget.externalNormalized;
+    if (ext == Offset.zero) return Offset.zero;
+    return Offset(ext.dx * _maxThrow, ext.dy * _maxThrow);
+  }
+
   void _updateFromLocal(Offset local) {
     final center = Offset(_hit / 2, _hit / 2);
     var delta = local - center;
     // Generous throw: edges of the pad reach full deflection quickly.
-    final max = widget.size * 0.38;
+    final max = _maxThrow;
     if (delta.distance > max) {
       delta = Offset.fromDirection(delta.direction, max);
     }
@@ -94,7 +107,7 @@ class _ArcadeJoystickState extends State<ArcadeJoystick> {
               height: size,
               child: CustomPaint(
                 painter: _JoystickPainter(
-                  knob: _knob,
+                  knob: _displayKnob,
                   ballRadius: _radius,
                   ghost: widget.ghost,
                 ),

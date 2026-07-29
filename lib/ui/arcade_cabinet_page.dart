@@ -127,11 +127,6 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
         onCheats: _openCheats,
       ).then((_) => _focus.requestFocus());
 
-  Future<void> _import() async {
-    await _emu.importRomsWithPicker();
-    _focus.requestFocus();
-  }
-
   Widget _viewport({required bool expand}) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -218,7 +213,6 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                           EmulatorToolbar(
                             controller: _emu,
                             onLibrary: _openLibrary,
-                            onImport: _import,
                             onSlots: _openSlots,
                             onKeys: _openKeys,
                             onCheats: _openCheats,
@@ -288,7 +282,6 @@ class _ArcadeCabinetPageState extends State<ArcadeCabinetPage>
                           controller: _emu,
                           compact: true,
                           onLibrary: _openLibrary,
-                          onImport: _import,
                           onSlots: _openSlots,
                           onKeys: _openKeys,
                           onCheats: _openCheats,

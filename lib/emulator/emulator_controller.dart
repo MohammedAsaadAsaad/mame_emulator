@@ -60,9 +60,14 @@ class EmulatorController extends ChangeNotifier {
   double soundVolume = 0.85;
 
   final Set<int> _keyDirs = {};
+  final Set<PadButton> _pressedPad = {};
   double _stickX = 0;
   double _stickY = 0;
+  bool coinPressed = false;
+  bool startPressed = false;
   Timer? _toastTimer;
+  Timer? _coinPulseTimer;
+  Timer? _startPulseTimer;
   List<SaveSlotInfo> saveSlots = const [];
   List<LibraryGame> games = const [];
 
@@ -76,6 +81,26 @@ class EmulatorController extends ChangeNotifier {
   bool get isRunning => _host.isRunning;
   String get status => _host.status;
   bool get inGameMenu => !_host.isGameLoaded;
+
+  /// On-screen pad mirrors keyboard (and touch) presses.
+  bool isPadPressed(PadButton button) => _pressedPad.contains(button);
+
+  /// Normalized stick deflection from keyboard dirs (−1..1). Touch stick
+  /// paints itself locally; this drives the knob when keys are held.
+  Offset get stickVisualFromKeys {
+    if (_keyDirs.isEmpty) return Offset.zero;
+    var x = 0.0;
+    var y = 0.0;
+    if (_keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_LEFT)) x -= 1;
+    if (_keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_RIGHT)) x += 1;
+    if (_keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_UP)) y -= 1;
+    if (_keyDirs.contains(RETRO_DEVICE_ID_JOYPAD_DOWN)) y += 1;
+    final o = Offset(x, y);
+    if (o.distance > 1) {
+      return Offset.fromDirection(o.direction, 1);
+    }
+    return o;
+  }
 
   void _onHost() => notifyListeners();
 
@@ -533,6 +558,7 @@ class EmulatorController extends ChangeNotifier {
 
   void insertCoin() {
     audio.resume(); // unlock audio on mobile after a user gesture
+    _pulseService(coin: true);
     _tap(RETRO_DEVICE_ID_JOYPAD_SELECT);
     _flash('COIN');
   }
@@ -543,8 +569,28 @@ class EmulatorController extends ChangeNotifier {
       unawaited(confirmMenuSelection());
       return;
     }
+    _pulseService(coin: false);
     _tap(RETRO_DEVICE_ID_JOYPAD_START);
     _flash('START');
+  }
+
+  void _pulseService({required bool coin}) {
+    if (coin) {
+      coinPressed = true;
+      _coinPulseTimer?.cancel();
+      _coinPulseTimer = Timer(const Duration(milliseconds: 120), () {
+        coinPressed = false;
+        notifyListeners();
+      });
+    } else {
+      startPressed = true;
+      _startPulseTimer?.cancel();
+      _startPulseTimer = Timer(const Duration(milliseconds: 120), () {
+        startPressed = false;
+        notifyListeners();
+      });
+    }
+    notifyListeners();
   }
 
   void exitToAttract() {
@@ -723,12 +769,22 @@ class EmulatorController extends ChangeNotifier {
       if (button == PadButton.a) unawaited(confirmMenuSelection());
       return;
     }
-    _host.setButton(_map(button), true);
+    if (_pressedPad.add(button)) {
+      _host.setButton(_map(button), true);
+      notifyListeners();
+    } else {
+      _host.setButton(_map(button), true);
+    }
   }
 
   void buttonUp(PadButton button) {
     if (inGameMenu) return;
-    _host.setButton(_map(button), false);
+    if (_pressedPad.remove(button)) {
+      _host.setButton(_map(button), false);
+      notifyListeners();
+    } else {
+      _host.setButton(_map(button), false);
+    }
   }
 
   /// Keyboard via remappable bindings (NES KeyBindingController pattern).
@@ -772,12 +828,14 @@ class EmulatorController extends ChangeNotifier {
           return true;
         }
         final id = _dirId(action)!;
+        var changed = false;
         if (down) {
-          _keyDirs.add(id);
+          changed = _keyDirs.add(id);
         } else if (up) {
-          _keyDirs.remove(id);
+          changed = _keyDirs.remove(id);
         }
         _applyDirections();
+        if (changed) notifyListeners();
         return true;
       case ControlAction.a:
       case ControlAction.b:
@@ -873,9 +931,10 @@ class EmulatorController extends ChangeNotifier {
   }
 
   @override
-  @override
   void dispose() {
     _toastTimer?.cancel();
+    _coinPulseTimer?.cancel();
+    _startPulseTimer?.cancel();
     _host.removeListener(_onHost);
     _host.dispose();
     unawaited(audio.dispose());

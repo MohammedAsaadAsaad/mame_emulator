@@ -14,6 +14,7 @@ class GlossyActionButton extends StatefulWidget {
     required this.onUp,
     this.diameter = 64,
     this.ghost = false,
+    this.pressed = false,
   });
 
   final String label;
@@ -25,6 +26,9 @@ class GlossyActionButton extends StatefulWidget {
   /// Slightly translucent face for fullscreen / overlay pads.
   final bool ghost;
 
+  /// External press (e.g. keyboard) — OR'd with local touch.
+  final bool pressed;
+
   @override
   State<GlossyActionButton> createState() => _GlossyActionButtonState();
 }
@@ -32,6 +36,8 @@ class GlossyActionButton extends StatefulWidget {
 class _GlossyActionButtonState extends State<GlossyActionButton> {
   bool _down = false;
   int? _activePointer;
+
+  bool get _lit => _down || widget.pressed;
 
   void _press(bool down) {
     if (_down == down) return;
@@ -50,6 +56,7 @@ class _GlossyActionButtonState extends State<GlossyActionButton> {
     // Extra hit padding so nearby taps still catch the button.
     final hit = d * 1.18;
     final opacity = widget.ghost ? 0.78 : 1.0;
+    final lit = _lit;
 
     return SizedBox(
       width: hit,
@@ -75,7 +82,7 @@ class _GlossyActionButtonState extends State<GlossyActionButton> {
           child: Opacity(
             opacity: opacity,
             child: Transform.scale(
-              scale: _down ? 0.96 : 1.0,
+              scale: lit ? 0.96 : 1.0,
               child: SizedBox(
                 width: d,
                 height: d,
@@ -83,7 +90,7 @@ class _GlossyActionButtonState extends State<GlossyActionButton> {
                   painter: _ConcaveButtonPainter(
                     color: widget.color,
                     label: widget.label,
-                    pressed: _down,
+                    pressed: lit,
                   ),
                 ),
               ),

@@ -55,6 +55,101 @@ class SpeedSheet {
   }
 }
 
+/// Single Sound control: enable checkbox + volume slider.
+class SoundSheet {
+  static Future<void> show(BuildContext context, EmulatorController emu) {
+    return EmulationPauseGuard.run(
+      emu,
+      () => showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+        ),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: AnimatedBuilder(
+              animation: emu,
+              builder: (context, _) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'SOUND',
+                      style: TextStyle(
+                        color: Color(0xFFE8C84A),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      value: emu.soundEnabled,
+                      onChanged: (v) {
+                        if (v != null) emu.setSoundEnabled(v);
+                      },
+                      activeColor: const Color(0xFFE8C84A),
+                      checkColor: const Color(0xFF1A1A1A),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text(
+                        'Enable sound',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.volume_down,
+                          color: emu.soundEnabled
+                              ? const Color(0xFFE8DCC8)
+                              : Colors.white24,
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: emu.soundVolume,
+                            onChanged: emu.soundEnabled
+                                ? (v) => emu.setSoundVolume(v)
+                                : null,
+                            activeColor: const Color(0xFFE8C84A),
+                            inactiveColor: const Color(0xFF444444),
+                          ),
+                        ),
+                        Icon(
+                          Icons.volume_up,
+                          color: emu.soundEnabled
+                              ? const Color(0xFFE8DCC8)
+                              : Colors.white24,
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 40,
+                          child: Text(
+                            '${(emu.soundVolume * 100).round()}%',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              color: emu.soundEnabled
+                                  ? Colors.white70
+                                  : Colors.white24,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsSheet {
   static Future<void> show(BuildContext context, EmulatorController emu, {
     required VoidCallback onLibrary,

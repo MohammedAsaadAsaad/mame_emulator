@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 /// Classic arcade COIN / START — metal bezel with a slightly **concave** face.
-class ArcadeServiceButton extends StatefulWidget {
+class ArcadeServiceButton extends StatelessWidget {
   const ArcadeServiceButton({
     super.key,
     required this.label,
     required this.onPressed,
     this.faceColor = const Color(0xFFE8E0D0),
     this.diameter = 52,
+    this.pressed = false,
   });
 
   final String label;
@@ -15,24 +16,16 @@ class ArcadeServiceButton extends StatefulWidget {
   final Color faceColor;
   final double diameter;
 
-  @override
-  State<ArcadeServiceButton> createState() => _ArcadeServiceButtonState();
-}
-
-class _ArcadeServiceButtonState extends State<ArcadeServiceButton> {
-  bool _down = false;
+  /// External press (e.g. keyboard / controller pulse).
+  final bool pressed;
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.diameter;
+    final d = diameter;
 
     return GestureDetector(
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) {
-        setState(() => _down = false);
-        widget.onPressed();
-      },
-      onTapCancel: () => setState(() => _down = false),
+      // Fire immediately; visual comes from controller pulse (touch + keyboard).
+      onTapDown: (_) => onPressed(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -41,14 +34,14 @@ class _ArcadeServiceButtonState extends State<ArcadeServiceButton> {
             height: d,
             child: CustomPaint(
               painter: _ConcaveServicePainter(
-                faceColor: widget.faceColor,
-                pressed: _down,
+                faceColor: faceColor,
+                pressed: pressed,
               ),
             ),
           ),
           SizedBox(height: d < 40 ? 4 : 6),
           Text(
-            widget.label,
+            label,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.55),
               fontSize: d < 40 ? 8 : 10,

@@ -136,14 +136,6 @@ class _LibraryBodyState extends State<_LibraryBody> {
                     const Spacer(),
                     TextButton.icon(
                       onPressed: () async {
-                        await widget.emu.scanFolderWithPicker();
-                        await widget.emu.refreshLibrary();
-                      },
-                      icon: const Icon(Icons.folder_open),
-                      label: const Text('Scan'),
-                    ),
-                    TextButton.icon(
-                      onPressed: () async {
                         await widget.emu.importRomsWithPicker();
                         if (context.mounted) Navigator.pop(context);
                       },
@@ -158,7 +150,7 @@ class _LibraryBodyState extends State<_LibraryBody> {
                   child: games.isEmpty
                       ? Center(
                           child: Text(
-                            'No games — Import, Scan folder, or drop a .zip',
+                            'No games — Import a .zip or drop one here',
                             style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                           ),
                         )

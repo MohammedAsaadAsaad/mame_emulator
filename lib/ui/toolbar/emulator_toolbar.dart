@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../emulator/emulator_controller.dart';
 import '../../models/image_enhancement_mode.dart';
+import '../sheets/settings_sheets.dart';
 
 /// Thin NES-style horizontal emulator toolbar above the CRT.
 class EmulatorToolbar extends StatelessWidget {
@@ -9,7 +10,6 @@ class EmulatorToolbar extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onLibrary,
-    required this.onImport,
     required this.onSlots,
     required this.onKeys,
     required this.onSpeed,
@@ -20,7 +20,6 @@ class EmulatorToolbar extends StatelessWidget {
 
   final EmulatorController controller;
   final VoidCallback onLibrary;
-  final VoidCallback onImport;
   final VoidCallback onSlots;
   final VoidCallback onKeys;
   final VoidCallback onSpeed;
@@ -55,7 +54,7 @@ class EmulatorToolbar extends StatelessWidget {
               label: 'Games',
               onTap: onLibrary,
             ),
-            _Tool(icon: Icons.file_open, label: 'Import', onTap: onImport),
+            _Tool(icon: Icons.save, label: 'Slots', onTap: onSlots),
             _Tool(
               icon: running ? Icons.pause : Icons.play_arrow,
               label: running ? 'Pause' : 'Play',
@@ -67,32 +66,21 @@ class EmulatorToolbar extends StatelessWidget {
               onTap: loaded ? controller.resetEmulation : null,
             ),
             _Tool(
-              icon: Icons.speed,
-              label: '${controller.emulationSpeed.toStringAsFixed(2)}×',
-              onTap: onSpeed,
+              icon: Icons.auto_fix_high,
+              label: 'Cheats',
+              onTap: loaded ? onCheats : null,
             ),
             _Tool(
               icon: controller.soundEnabled
                   ? Icons.volume_up
                   : Icons.volume_off,
-              label: controller.soundEnabled ? 'Sound' : 'Muted',
-              onTap: controller.toggleSound,
+              label: 'Sound',
+              onTap: () => SoundSheet.show(context, controller),
             ),
             _Tool(
-              icon: Icons.volume_down,
-              label: 'Vol−',
-              onTap: controller.volumeDown,
-            ),
-            _Tool(
-              icon: Icons.volume_up,
-              label: 'Vol+',
-              onTap: controller.volumeUp,
-            ),
-            _Tool(icon: Icons.save, label: 'Slots', onTap: onSlots),
-            _Tool(
-              icon: Icons.auto_fix_high,
-              label: 'Cheats',
-              onTap: loaded ? onCheats : null,
+              icon: Icons.speed,
+              label: '${controller.emulationSpeed.toStringAsFixed(2)}×',
+              onTap: onSpeed,
             ),
             _Tool(icon: Icons.keyboard, label: 'Keys', onTap: onKeys),
             _Tool(

@@ -207,7 +207,7 @@ class _AttractMenuState extends State<AttractMenu> {
             child: games.isEmpty
                 ? Center(
                     child: Text(
-                      'NO GAMES\n\nImport · Scan · Drop .zip',
+                      'NO GAMES\n\nImport · Drop .zip',
                       textAlign: TextAlign.center,
                       style: ArcadeText.dim(size: 8),
                     ),
