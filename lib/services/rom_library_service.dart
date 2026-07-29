@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../libretro/libretro_host.dart';
 import '../models/library_models.dart';
 import 'system_bios_service.dart';
 
@@ -95,7 +94,7 @@ class RomLibraryService {
   Future<List<LibraryGame>> loadAll() async {
     final file = await _manifest();
     if (!await file.exists()) {
-      return _seedFromProjectRoms();
+      return [];
     }
     try {
       final list = jsonDecode(await file.readAsString()) as List<dynamic>;
@@ -108,28 +107,6 @@ class RomLibraryService {
     } catch (_) {
       return [];
     }
-  }
-
-  Future<List<LibraryGame>> _seedFromProjectRoms() async {
-    final dir = Directory(p.join(CoreLocator.projectRoot, 'roms'));
-    if (!dir.existsSync()) return [];
-    final games = <LibraryGame>[];
-    for (final f in dir.listSync().whereType<File>()) {
-      final lower = f.path.toLowerCase();
-      if (!lower.endsWith('.zip') && !lower.endsWith('.7z')) continue;
-      if (SystemBiosService.isBiosArchive(f.path)) {
-        await SystemBiosService.installBiosArchive(f.path);
-        continue;
-      }
-      final abs = p.normalize(p.absolute(f.path));
-      games.add(LibraryGame(
-        id: idForPath(abs),
-        title: p.basenameWithoutExtension(abs),
-        path: abs,
-      ));
-    }
-    if (games.isNotEmpty) await _save(games);
-    return games;
   }
 
   Future<void> _save(List<LibraryGame> games) async {

@@ -455,10 +455,11 @@ class SystemBiosService {
 
   /// Ensure CPS-2 `{stem}.key` is available to FBNeo for [romPath].
   ///
-  /// Order: already inside ZIP → beside ROM → system dirs → `assets/bios/`.
-  /// When a key is found, it is written beside the ROM, into the system dirs,
-  /// and injected into the ZIP (app-private copies) so FBNeo always sees it.
-  /// Returns false only when no key could be found anywhere (incomplete set).
+  /// Prefers `assets/bios/` / key packs / system dirs over a key already inside
+  /// the ZIP — some dumps ship a stub `.key` that is the right size but wrong
+  /// bytes. When a trusted key is found it is written beside the ROM, into the
+  /// system dirs, and injected into the ZIP. Returns true if any usable key
+  /// ends up available (including a non-stub key already in the ZIP).
   static Future<bool> ensureKeyBesideRom(String romPath) async {
     final stem = CoreLocator.romStem(p.basename(romPath));
     if (stem.isEmpty) return false;
@@ -466,17 +467,12 @@ class SystemBiosService {
     final romFile = File(p.normalize(p.absolute(romPath)));
     if (!romFile.existsSync()) return false;
 
-    if (await _zipContainsFile(romFile.path, keyName)) {
-      return true;
-    }
-
     final romDir = p.dirname(romFile.path);
     final beside = File(p.join(romDir, keyName));
 
-    Uint8List? keyBytes;
-    if (beside.existsSync()) {
-      keyBytes = await beside.readAsBytes();
-    }
+    // Trusted sources first (may replace a stub inside the ZIP).
+    Uint8List? keyBytes = await _loadAssetBytes('$assetBiosPrefix$keyName');
+    keyBytes ??= await _keyFromBundledKeyArchive(keyName);
 
     if (keyBytes == null) {
       for (final dir in [_systemDir, _fbneoDir, p.join(_fbneoDir, 'arcade')]) {
@@ -487,8 +483,11 @@ class SystemBiosService {
       }
     }
 
-    keyBytes ??= await _loadAssetBytes('$assetBiosPrefix$keyName');
-    keyBytes ??= await _keyFromBundledKeyArchive(keyName);
+    if (keyBytes == null && beside.existsSync()) {
+      keyBytes = await beside.readAsBytes();
+    }
+
+    keyBytes ??= await _readKeyFromZip(romFile.path, keyName);
 
     if (keyBytes == null || keyBytes.isEmpty) {
       return false;
@@ -496,7 +495,9 @@ class SystemBiosService {
 
     await installSupportFile(keyName, keyBytes, force: true);
     try {
-      if (!beside.existsSync() || beside.lengthSync() != keyBytes.length) {
+      final needWrite = !beside.existsSync() ||
+          !_sameBytes(await beside.readAsBytes(), keyBytes);
+      if (needWrite) {
         await beside.writeAsBytes(keyBytes, flush: true);
       }
     } catch (e) {
@@ -510,6 +511,30 @@ class SystemBiosService {
       debugPrint('Could not inject $keyName into ZIP (beside copy still tried): $e');
     }
     return true;
+  }
+
+  static bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static Future<Uint8List?> _readKeyFromZip(String zipPath, String fileName) async {
+    try {
+      final lower = fileName.toLowerCase();
+      final archive =
+          ZipDecoder().decodeBytes(await File(zipPath).readAsBytes(), verify: false);
+      for (final f in archive) {
+        if (!f.isFile) continue;
+        if (p.basename(f.name).toLowerCase() != lower) continue;
+        final content = f.content;
+        if (content.isEmpty) continue;
+        return Uint8List.fromList(content);
+      }
+    } catch (_) {}
+    return null;
   }
 
   static Future<Uint8List?> _keyFromBundledKeyArchive(String keyName) async {
@@ -533,19 +558,6 @@ class SystemBiosService {
       }
     }
     return null;
-  }
-
-  static Future<bool> _zipContainsFile(String zipPath, String fileName) async {
-    try {
-      final lower = fileName.toLowerCase();
-      final archive =
-          ZipDecoder().decodeBytes(await File(zipPath).readAsBytes(), verify: false);
-      for (final f in archive) {
-        if (!f.isFile) continue;
-        if (p.basename(f.name).toLowerCase() == lower) return true;
-      }
-    } catch (_) {}
-    return false;
   }
 
   /// Add/replace [fileName] inside [zipPath] without changing other members.

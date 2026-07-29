@@ -7,7 +7,7 @@ Flutter arcade cabinet with **libretro** cores (FBNeo / MAME2003+).
 ## Features
 
 - Remappable keyboard bindings
-- Game library indexes ROMs at their original paths (Import / Scan / drag-drop — no copy)
+- Game library via **Import** / drag-drop (no games shipped with the app)
 - Save states + thumbnails under app support (`mame_cabinet/`)
 - 10 save slots (MEMORY PACK)
 - Pause / Reset / Speed (0.5×–1.5×)
@@ -57,11 +57,12 @@ CI packages `cores\*.dll` and `host_helpers.dll` next to the exe inside the zip.
 flutter build apk --release --split-per-abi
 ```
 
-Point the app at your ROM folders via **Games → Scan**, **Import**, or drag-drop.  
+Add games via **Games → Import** or drag-drop a `.zip` from your device.  
+No ROM packs are bundled with the app.  
 Use **FBNeo-matched** arcade sets for Capcom / Neo Geo / most modern packs; MAME2003+ only for a few early sets (e.g. `gridlee`).  
 Neo Geo games need `neogeo.zip` — for personal builds place it in `assets/bios/` (gitignored); the app copies it into the system dir at startup on Linux / Windows / Android.  
 The library resolves **real game titles** from the FBNeo gamelist and caches **box art** silently.  
-Public-domain test ROM notes live in `roms/README.md` (`roms/*.zip` is gitignored).
+See `roms/README.md` (folder is for optional local tests only; `roms/*.zip` is gitignored).
 
 ### BIOS archives vs cores
 
