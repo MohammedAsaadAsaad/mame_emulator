@@ -837,16 +837,28 @@ class CoreLocator {
   static String get helpersPath =>
       resolveLibraryPath(helpersName) ?? p.join(nativeDir, helpersName);
 
-  static String? _core(String name) {
-    // Prefer Android jniLibs naming (lib*.so) then desktop names.
+  /// Shared-library extension for the current host OS.
+  static String get coreExtension {
+    if (Platform.isWindows) return '.dll';
+    if (Platform.isMacOS) return '.dylib';
+    return '.so';
+  }
+
+  static String? _core(String stem) {
+    final ext = coreExtension;
+    // Prefer platform-native name; Android jniLibs often use lib*.so.
     final names = <String>[
-      if (!name.startsWith('lib')) 'lib$name',
-      name,
-      if (name.endsWith('.so')) name.replaceAll('.so', '_android.so'),
+      if (Platform.isAndroid && !stem.startsWith('lib')) 'lib${stem}$ext',
+      '$stem$ext',
+      if (Platform.isAndroid) '${stem}_android$ext',
     ];
     for (final n in names) {
       final path = resolveLibraryPath(n);
       if (path == null) continue;
+      // Never load a core built for another OS (e.g. .so on Windows).
+      if (_isFilesystemPath(path) && !path.toLowerCase().endsWith(ext)) {
+        continue;
+      }
       if (_isFilesystemPath(path)) {
         if (File(path).existsSync()) return path;
       } else if (Platform.isAndroid) {
@@ -856,15 +868,9 @@ class CoreLocator {
     return null;
   }
 
-  static String? fbneo() =>
-      _core('fbneo_libretro.so') ??
-      _core('fbneo_libretro.dylib') ??
-      _core('fbneo_libretro.dll');
+  static String? fbneo() => _core('fbneo_libretro');
 
-  static String? mame2003Plus() =>
-      _core('mame2003_plus_libretro.so') ??
-      _core('mame2003_plus_libretro.dylib') ??
-      _core('mame2003_plus_libretro.dll');
+  static String? mame2003Plus() => _core('mame2003_plus_libretro');
 
   /// Stem of a ROM zip name (`punisher.zip` → `punisher`).
   static String romStem(String? romBasename) {

@@ -56,7 +56,7 @@ if ($vcvars) {
   Write-Host "→ Building host_helpers.dll with gcc"
   & gcc -shared -O2 -o $HelperDll $HelperSrc
 } else {
-  throw "Neither MSVC (vcvars64) nor gcc found — cannot build host_helpers.dll"
+  throw "Neither MSVC (vcvars64) nor gcc found - cannot build host_helpers.dll"
 }
 
 Write-Host "Windows natives ready:"

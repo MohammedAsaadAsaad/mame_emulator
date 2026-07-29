@@ -95,14 +95,9 @@ class EmulatorToolbar extends StatelessWidget {
                 icon: controller.shadersEnabled
                     ? Icons.auto_awesome
                     : Icons.auto_awesome_outlined,
-                label: controller.shadersEnabled ? 'FX On' : 'FX Off',
-                onTap: controller.toggleShaders,
-              ),
-            ),
-            Builder(
-              builder: (ctx) => _Tool(
-                icon: Icons.tune,
-                label: controller.enhancementMode.shortLabel,
+                label: controller.shadersEnabled
+                    ? controller.enhancementMode.shortLabel
+                    : 'FX Off',
                 onTap: () => _pickShader(ctx, controller),
               ),
             ),
@@ -127,14 +122,12 @@ class EmulatorToolbar extends StatelessWidget {
       color: const Color(0xFF222222),
       items: [
         PopupMenuItem(
-          value: 'off',
+          value: 'toggle',
           child: Text(
-            'Off (raw pixels)',
-            style: TextStyle(
-              color: !emu.shadersEnabled
-                  ? const Color(0xFFE8C84A)
-                  : Colors.white,
-              fontWeight: !emu.shadersEnabled ? FontWeight.w800 : FontWeight.w500,
+            emu.shadersEnabled ? 'Disable FX' : 'Enable FX',
+            style: const TextStyle(
+              color: Color(0xFFE8C84A),
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
@@ -157,8 +150,8 @@ class EmulatorToolbar extends StatelessWidget {
       ],
     ).then((value) {
       if (value == null) return;
-      if (value == 'off') {
-        emu.setShadersEnabled(false);
+      if (value == 'toggle') {
+        emu.toggleShaders();
       } else if (value is ImageEnhancementMode) {
         emu.setEnhancementMode(value);
       }

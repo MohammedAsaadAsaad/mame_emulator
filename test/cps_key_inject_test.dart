@@ -25,7 +25,7 @@ void main() {
     final built = Archive()
       ..add(ArchiveFile('pwg.01', 4, [1, 2, 3, 4]))
       ..add(ArchiveFile('pwg.02', 4, [5, 6, 7, 8]));
-    final encoded = ZipEncoder().encode(built)!;
+    final encoded = ZipEncoder().encode(built);
     await File(romPath).writeAsBytes(encoded);
 
     // Plant key in system dir (simulates assets/bios install)

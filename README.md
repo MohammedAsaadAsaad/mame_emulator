@@ -88,7 +88,7 @@ Remap anytime via toolbar **Keys**.
 
 ## Icon
 
-Regenerate platform launcher icons after changing `assets/icon/app_icon.png`:
+Regenerate platform launcher icons after changing `assets/icon/arcade.png`:
 
 ```bash
 dart run flutter_launcher_icons

@@ -4,6 +4,7 @@ import '../../emulator/emulator_controller.dart';
 import '../../models/image_enhancement_mode.dart';
 import '../../utils/emulation_pause_guard.dart';
 import '../../utils/platform_info.dart';
+import '../widgets/app_logo.dart';
 
 class SpeedSheet {
   static Future<void> show(BuildContext context, EmulatorController emu) {
@@ -173,15 +174,21 @@ class SettingsSheet {
             children: [
               const Padding(
                 padding: EdgeInsets.all(12),
-                child: Text(
-                  'SETTINGS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFFE8C84A),
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                    fontSize: 16,
-                  ),
+                child: Column(
+                  children: [
+                    AppLogo(size: 64),
+                    SizedBox(height: 10),
+                    Text(
+                      'SETTINGS',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFFE8C84A),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               ListTile(
