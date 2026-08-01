@@ -59,6 +59,13 @@ class EmulatorController extends ChangeNotifier {
   bool soundEnabled = true;
   double soundVolume = 0.85;
 
+  /// Master gate for cheats: off disables core application without clearing
+  /// per-cheat toggle preferences (saved per romset).
+  bool cheatsMasterEnabled = false;
+  final Map<String, String> _cheatDesired = {};
+  String? _cheatPrefsStem;
+  Timer? _cheatReapplyTimer;
+
   final Set<int> _keyDirs = {};
   final Set<PadButton> _pressedPad = {};
   double _stickX = 0;
@@ -162,15 +169,83 @@ class EmulatorController extends ChangeNotifier {
 
   void toggleSound() => setSoundEnabled(!soundEnabled);
 
-  /// Apply an FBNeo cheat core-option (takes effect on the next frame).
-  void setCheat(String key, String value) {
-    _host.setCoreOption(key, value);
-    final short = value.length > 28 ? '${value.substring(0, 28)}…' : value;
-    _flash('CHEAT: $short');
+  bool get hasCheats => _host.cheatOptions.isNotEmpty;
+
+  /// Desired (saved) value for a cheat — used by the UI so toggles stay put
+  /// when the master switch disables cheat mode.
+  String cheatDisplayValue(CheatOption c) =>
+      _cheatDesired[c.key] ?? c.current;
+
+  bool isCheatDesiredOn(CheatOption c) =>
+      c.looksEnabled(cheatDisplayValue(c));
+
+  /// Update a per-cheat preference. Applies to the core only when master is on.
+  Future<void> setCheat(String key, String value) async {
+    _cheatDesired[key] = value;
+    unawaited(_persistCheatSettings());
+    if (cheatsMasterEnabled) {
+      _host.setCoreOption(key, value);
+      final short = value.length > 28 ? '${value.substring(0, 28)}…' : value;
+      _flash('CHEAT: $short');
+    } else {
+      _flash('CHEAT SAVED');
+    }
     notifyListeners();
   }
 
-  bool get hasCheats => _host.cheatOptions.isNotEmpty;
+  Future<void> setCheatsMasterEnabled(bool enabled) async {
+    if (cheatsMasterEnabled == enabled) return;
+    cheatsMasterEnabled = enabled;
+    unawaited(_persistCheatSettings());
+    _applyCheatDesiredState();
+    _flash(enabled ? 'CHEATS ON' : 'CHEATS OFF');
+    notifyListeners();
+  }
+
+  Future<void> _loadCheatSettingsForRom(String romPath) async {
+    final stem = CoreLocator.romStem(p.basename(romPath));
+    _cheatPrefsStem = stem;
+    _cheatDesired.clear();
+    final settings = await CheatService.loadSettings(stem);
+    cheatsMasterEnabled = settings.masterEnabled;
+    _cheatDesired.addAll(settings.values);
+  }
+
+  Future<void> _persistCheatSettings() async {
+    final stem = _cheatPrefsStem;
+    if (stem == null || stem.isEmpty) return;
+    await CheatService.saveSettings(
+      stem,
+      GameCheatSettings(
+        masterEnabled: cheatsMasterEnabled,
+        values: Map<String, String>.from(_cheatDesired),
+      ),
+    );
+  }
+
+  void _applyCheatDesiredState() {
+    if (!_host.isGameLoaded) return;
+    for (final c in _host.cheatOptions) {
+      if (c.label.trim().isEmpty || c.values.isEmpty) continue;
+      final next = cheatsMasterEnabled
+          ? (_cheatDesired[c.key] ?? c.disabledValue)
+          : c.disabledValue;
+      if (next.isEmpty) continue;
+      if (c.current != next) _host.setCoreOption(c.key, next);
+    }
+  }
+
+  /// Restore prefs after load; re-apply a few times because FBNeo may reset
+  /// cheat variables shortly after boot (RETRO_ENVIRONMENT_SET_VARIABLE).
+  void _scheduleCheatRestore() {
+    _cheatReapplyTimer?.cancel();
+    _applyCheatDesiredState();
+    var step = 0;
+    _cheatReapplyTimer = Timer.periodic(const Duration(milliseconds: 400), (t) {
+      _applyCheatDesiredState();
+      if (++step >= 5) t.cancel();
+    });
+  }
 
   Future<void> setSoundVolume(double volume) async {
     soundVolume = volume.clamp(0.0, 1.0);
@@ -354,6 +429,8 @@ class EmulatorController extends ChangeNotifier {
         _flash('CORE: ${_host.coreName}');
       }
       _host.start(speed: emulationSpeed);
+      await _loadCheatSettingsForRom(game.path);
+      _scheduleCheatRestore();
       await library.markPlayed(game);
       games = await library.loadAll();
       await refreshSaveSlots();
@@ -594,6 +671,10 @@ class EmulatorController extends ChangeNotifier {
   }
 
   void exitToAttract() {
+    _cheatReapplyTimer?.cancel();
+    _cheatDesired.clear();
+    _cheatPrefsStem = null;
+    cheatsMasterEnabled = false;
     unawaited(_host.unload().then((_) async {
       games = await library.loadAll();
       _clampMenuIndex();
@@ -935,6 +1016,7 @@ class EmulatorController extends ChangeNotifier {
     _toastTimer?.cancel();
     _coinPulseTimer?.cancel();
     _startPulseTimer?.cancel();
+    _cheatReapplyTimer?.cancel();
     _host.removeListener(_onHost);
     _host.dispose();
     unawaited(audio.dispose());

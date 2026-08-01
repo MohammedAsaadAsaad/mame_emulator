@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../libretro/libretro_host.dart';
 
@@ -149,6 +151,66 @@ class CheatService {
 
   static bool hasCheatsForRom(String? romBasename) =>
       iniPathForRom(romBasename) != null;
+
+  static String prefsKeyForStem(String stem) => 'cheats_v1_$stem';
+
+  /// Per-romset cheat UI state (master gate + desired option values).
+  static Future<GameCheatSettings> loadSettings(String stem) async {
+    if (stem.isEmpty) return GameCheatSettings.empty;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(prefsKeyForStem(stem));
+    if (raw == null || raw.isEmpty) return GameCheatSettings.empty;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final master = map['master'] as bool? ?? false;
+      final valuesRaw = map['values'];
+      final values = <String, String>{};
+      if (valuesRaw is Map) {
+        for (final e in valuesRaw.entries) {
+          final v = e.value;
+          if (v is String && v.isNotEmpty) values[e.key.toString()] = v;
+        }
+      }
+      return GameCheatSettings(masterEnabled: master, values: values);
+    } catch (e) {
+      debugPrint('Cheat settings decode failed for $stem: $e');
+      return GameCheatSettings.empty;
+    }
+  }
+
+  static Future<void> saveSettings(String stem, GameCheatSettings settings) async {
+    if (stem.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      prefsKeyForStem(stem),
+      jsonEncode({
+        'master': settings.masterEnabled,
+        'values': settings.values,
+      }),
+    );
+  }
+}
+
+/// Persisted cheat preferences for one romset.
+class GameCheatSettings {
+  const GameCheatSettings({
+    required this.masterEnabled,
+    required this.values,
+  });
+
+  static const empty = GameCheatSettings(masterEnabled: false, values: {});
+
+  final bool masterEnabled;
+  final Map<String, String> values;
+
+  GameCheatSettings copyWith({
+    bool? masterEnabled,
+    Map<String, String>? values,
+  }) =>
+      GameCheatSettings(
+        masterEnabled: masterEnabled ?? this.masterEnabled,
+        values: values ?? this.values,
+      );
 }
 
 /// One FBNeo core-option cheat exposed after `loadGame`.
@@ -165,7 +227,24 @@ class CheatOption {
   final List<String> values;
   final String current;
 
-  bool get isEnabled =>
-      current != values.first &&
-      !current.toLowerCase().contains('disabled');
+  bool get isEnabled => looksEnabled(current);
+
+  bool looksEnabled(String value) =>
+      values.isNotEmpty &&
+      value != values.first &&
+      !value.toLowerCase().contains('disabled');
+
+  String get disabledValue {
+    for (final v in values) {
+      if (v.toLowerCase().contains('disabled')) return v;
+    }
+    return values.isNotEmpty ? values.first : '';
+  }
+
+  String get enabledValue {
+    for (final v in values) {
+      if (!v.toLowerCase().contains('disabled')) return v;
+    }
+    return values.length > 1 ? values[1] : (values.isNotEmpty ? values.first : '');
+  }
 }
